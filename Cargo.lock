@@ -819,9 +819,11 @@ dependencies = [
 name = "demo-app"
 version = "0.1.0"
 dependencies = [
+ "accesskit",
  "eframe",
  "egui",
  "egui-mcp-client",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]
@@ -965,6 +967,8 @@ dependencies = [
 name = "egui-mcp-client"
 version = "0.1.0"
 dependencies = [
+ "accesskit",
+ "egui",
  "egui-mcp-protocol",
  "serde",
  "serde_json",
@@ -981,6 +985,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.17",
+ "tokio",
 ]
 
 [[package]]

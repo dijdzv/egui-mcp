@@ -1,9 +1,32 @@
 //! Demo egui application for testing egui-mcp
 
 use eframe::egui;
+use egui_mcp_client::{McpClient, UiTreeBuilder};
+use std::sync::Arc;
+use tokio::runtime::Runtime;
 
 fn main() -> eframe::Result<()> {
     tracing_subscriber::fmt::init();
+
+    // Create tokio runtime for async operations
+    let runtime = Arc::new(Runtime::new().expect("Failed to create tokio runtime"));
+
+    // Create MCP client
+    let mcp_client = McpClient::new();
+
+    // Start IPC server in background
+    let client_clone = mcp_client.clone();
+    runtime.spawn(async move {
+        if let Err(e) = egui_mcp_client::IpcServer::run(client_clone).await {
+            tracing::error!("IPC server error: {}", e);
+        }
+    });
+
+    tracing::info!("Starting demo app with MCP client...");
+    tracing::info!(
+        "Socket path: {:?}",
+        runtime.block_on(mcp_client.socket_path())
+    );
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([400.0, 300.0]),
@@ -13,15 +36,32 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "egui-mcp Demo App",
         options,
-        Box::new(|_cc| Ok(Box::new(DemoApp::default()))),
+        Box::new(move |cc| Ok(Box::new(DemoApp::new(cc, mcp_client, runtime)))),
     )
 }
 
-#[derive(Default)]
 struct DemoApp {
     name: String,
     counter: i32,
     checkbox_value: bool,
+    mcp_client: McpClient,
+    runtime: Arc<Runtime>,
+}
+
+impl DemoApp {
+    fn new(
+        _cc: &eframe::CreationContext<'_>,
+        mcp_client: McpClient,
+        runtime: Arc<Runtime>,
+    ) -> Self {
+        Self {
+            name: String::new(),
+            counter: 0,
+            checkbox_value: false,
+            mcp_client,
+            runtime,
+        }
+    }
 }
 
 impl eframe::App for DemoApp {
@@ -53,7 +93,25 @@ impl eframe::App for DemoApp {
             }
 
             ui.separator();
-            ui.label(format!("Hello, {}!", if self.name.is_empty() { "World" } else { &self.name }));
+            ui.label(format!(
+                "Hello, {}!",
+                if self.name.is_empty() {
+                    "World"
+                } else {
+                    &self.name
+                }
+            ));
+        });
+
+        // Update UI tree from AccessKit
+        ctx.output(|output| {
+            if let Some(ref update) = output.accesskit_update {
+                let tree = UiTreeBuilder::from_accesskit(update);
+                let client = self.mcp_client.clone();
+                self.runtime.spawn(async move {
+                    client.update_ui_tree(tree).await;
+                });
+            }
         });
     }
 }
