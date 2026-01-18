@@ -1,0 +1,17 @@
+[package]
+name = "demo-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Demo egui application for testing egui-mcp"
+
+[[bin]]
+name = "demo-app"
+path = "src/main.rs"
+
+[dependencies]
+egui-mcp-client = { workspace = true }
+egui = { workspace = true }
+eframe = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

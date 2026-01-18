@@ -1,0 +1,20 @@
+[package]
+name = "egui-mcp-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "MCP server for egui UI automation"
+
+[[bin]]
+name = "egui-mcp-server"
+path = "src/main.rs"
+
+[dependencies]
+egui-mcp-protocol = { workspace = true }
+rmcp = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
