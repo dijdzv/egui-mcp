@@ -8,14 +8,45 @@ use anyhow::Result;
 use ipc_client::IpcClient;
 use rmcp::{
     ServerHandler, ServiceExt,
-    handler::server::tool::ToolRouter,
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{Implementation, ProtocolVersion, ServerCapabilities, ServerInfo},
-    tool, tool_handler, tool_router,
+    schemars, tool, tool_handler, tool_router,
     transport::stdio,
 };
+use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+
+/// Request for find_by_label tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct FindByLabelRequest {
+    #[schemars(description = "Pattern to match against labels (substring match)")]
+    pattern: String,
+}
+
+/// Request for find_by_label_exact tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct FindByLabelExactRequest {
+    #[schemars(description = "Exact label text to match")]
+    pattern: String,
+}
+
+/// Request for find_by_role tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct FindByRoleRequest {
+    #[schemars(
+        description = "Role to search for (e.g., 'Button', 'TextInput', 'CheckBox', 'Label')"
+    )]
+    role: String,
+}
+
+/// Request for get_element tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct GetElementRequest {
+    #[schemars(description = "Node ID to retrieve (as string)")]
+    id: String,
+}
 
 /// egui-mcp server handler
 #[derive(Clone)]
@@ -97,6 +128,181 @@ impl EguiMcpServer {
             .to_string(),
         }
     }
+
+    /// Find UI elements by their label text (substring match)
+    #[tool(description = "Find UI elements by their label text (substring match)")]
+    async fn find_by_label(
+        &self,
+        Parameters(FindByLabelRequest { pattern }): Parameters<FindByLabelRequest>,
+    ) -> String {
+        if !self.ipc_client.is_socket_available() {
+            return json!({
+                "error": "not_connected",
+                "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
+            }).to_string();
+        }
+
+        match self.ipc_client.find_by_label(&pattern, false).await {
+            Ok(elements) => serde_json::to_string_pretty(&json!({
+                "count": elements.len(),
+                "elements": elements
+            }))
+            .unwrap_or_else(|e| {
+                json!({
+                    "error": "serialization_error",
+                    "message": format!("Failed to serialize elements: {}", e)
+                })
+                .to_string()
+            }),
+            Err(e) => json!({
+                "error": "connection_error",
+                "message": format!("Failed to find elements: {}", e)
+            })
+            .to_string(),
+        }
+    }
+
+    /// Find UI elements by their label text (exact match)
+    #[tool(description = "Find UI elements by their label text (exact match)")]
+    async fn find_by_label_exact(
+        &self,
+        Parameters(FindByLabelExactRequest { pattern }): Parameters<FindByLabelExactRequest>,
+    ) -> String {
+        if !self.ipc_client.is_socket_available() {
+            return json!({
+                "error": "not_connected",
+                "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
+            }).to_string();
+        }
+
+        match self.ipc_client.find_by_label(&pattern, true).await {
+            Ok(elements) => serde_json::to_string_pretty(&json!({
+                "count": elements.len(),
+                "elements": elements
+            }))
+            .unwrap_or_else(|e| {
+                json!({
+                    "error": "serialization_error",
+                    "message": format!("Failed to serialize elements: {}", e)
+                })
+                .to_string()
+            }),
+            Err(e) => json!({
+                "error": "connection_error",
+                "message": format!("Failed to find elements: {}", e)
+            })
+            .to_string(),
+        }
+    }
+
+    /// Find UI elements by their role
+    #[tool(
+        description = "Find UI elements by their role (e.g., 'Button', 'TextInput', 'CheckBox', 'Label')"
+    )]
+    async fn find_by_role(
+        &self,
+        Parameters(FindByRoleRequest { role }): Parameters<FindByRoleRequest>,
+    ) -> String {
+        if !self.ipc_client.is_socket_available() {
+            return json!({
+                "error": "not_connected",
+                "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
+            }).to_string();
+        }
+
+        match self.ipc_client.find_by_role(&role).await {
+            Ok(elements) => serde_json::to_string_pretty(&json!({
+                "count": elements.len(),
+                "elements": elements
+            }))
+            .unwrap_or_else(|e| {
+                json!({
+                    "error": "serialization_error",
+                    "message": format!("Failed to serialize elements: {}", e)
+                })
+                .to_string()
+            }),
+            Err(e) => json!({
+                "error": "connection_error",
+                "message": format!("Failed to find elements: {}", e)
+            })
+            .to_string(),
+        }
+    }
+
+    /// Get detailed information about a specific UI element by ID
+    #[tool(
+        description = "Get detailed information about a specific UI element by its ID (as string)"
+    )]
+    async fn get_element(
+        &self,
+        Parameters(GetElementRequest { id }): Parameters<GetElementRequest>,
+    ) -> String {
+        if !self.ipc_client.is_socket_available() {
+            return json!({
+                "error": "not_connected",
+                "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
+            }).to_string();
+        }
+
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        match self.ipc_client.get_element(id).await {
+            Ok(Some(element)) => serde_json::to_string_pretty(&element).unwrap_or_else(|e| {
+                json!({
+                    "error": "serialization_error",
+                    "message": format!("Failed to serialize element: {}", e)
+                })
+                .to_string()
+            }),
+            Ok(None) => json!({
+                "error": "not_found",
+                "message": format!("No element found with id {}", id)
+            })
+            .to_string(),
+            Err(e) => json!({
+                "error": "connection_error",
+                "message": format!("Failed to get element: {}", e)
+            })
+            .to_string(),
+        }
+    }
+
+    /// Take a screenshot of the egui application
+    #[tool(
+        description = "Take a screenshot of the egui application. Returns base64-encoded PNG image data."
+    )]
+    async fn take_screenshot(&self) -> String {
+        if !self.ipc_client.is_socket_available() {
+            return json!({
+                "error": "not_connected",
+                "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
+            }).to_string();
+        }
+
+        match self.ipc_client.take_screenshot().await {
+            Ok((data, format)) => json!({
+                "format": format,
+                "data": data,
+                "encoding": "base64"
+            })
+            .to_string(),
+            Err(e) => json!({
+                "error": "screenshot_error",
+                "message": format!("Failed to take screenshot: {}", e)
+            })
+            .to_string(),
+        }
+    }
 }
 
 #[tool_handler]
@@ -109,7 +315,11 @@ impl ServerHandler for EguiMcpServer {
             instructions: Some(
                 "egui-mcp server provides tools for UI automation of egui applications. \
                  Use 'ping' to verify the server is running, 'check_connection' to verify \
-                 the egui app is connected, and 'get_ui_tree' to inspect the UI structure."
+                 the egui app is connected, 'get_ui_tree' to inspect the full UI structure, \
+                 'find_by_label' for substring search, 'find_by_label_exact' for exact match, \
+                 'find_by_role' to search by role (e.g., Button, TextInput), \
+                 'get_element' to get details by ID (pass ID as string), and \
+                 'take_screenshot' to capture the current UI."
                     .into(),
             ),
         }

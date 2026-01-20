@@ -24,6 +24,10 @@ pub struct McpClient {
 struct ClientState {
     ui_tree: UiTree,
     socket_path: PathBuf,
+    /// Screenshot data (PNG encoded)
+    screenshot_data: Option<Vec<u8>>,
+    /// Flag to request a screenshot
+    screenshot_requested: bool,
 }
 
 impl McpClient {
@@ -38,6 +42,8 @@ impl McpClient {
             state: Arc::new(RwLock::new(ClientState {
                 ui_tree: UiTree::default(),
                 socket_path,
+                screenshot_data: None,
+                screenshot_requested: false,
             })),
         }
     }
@@ -55,6 +61,34 @@ impl McpClient {
     /// Get the current UI tree
     pub async fn get_ui_tree(&self) -> UiTree {
         self.state.read().await.ui_tree.clone()
+    }
+
+    /// Set screenshot data (PNG encoded)
+    pub async fn set_screenshot(&self, data: Vec<u8>) {
+        self.state.write().await.screenshot_data = Some(data);
+    }
+
+    /// Get screenshot data (PNG encoded)
+    pub async fn get_screenshot(&self) -> Option<Vec<u8>> {
+        self.state.read().await.screenshot_data.clone()
+    }
+
+    /// Clear screenshot data
+    pub async fn clear_screenshot(&self) {
+        self.state.write().await.screenshot_data = None;
+    }
+
+    /// Request a screenshot (sets flag for the UI to capture)
+    pub async fn request_screenshot(&self) {
+        self.state.write().await.screenshot_requested = true;
+    }
+
+    /// Check if screenshot is requested and clear the flag
+    pub async fn take_screenshot_request(&self) -> bool {
+        let mut state = self.state.write().await;
+        let requested = state.screenshot_requested;
+        state.screenshot_requested = false;
+        requested
     }
 
     /// Start the IPC server in a background task

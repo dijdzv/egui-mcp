@@ -48,21 +48,12 @@ pub struct Rect {
 }
 
 /// UI tree containing all nodes
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UiTree {
     /// Root node IDs
     pub roots: Vec<u64>,
     /// All nodes in the tree
     pub nodes: Vec<NodeInfo>,
-}
-
-impl Default for UiTree {
-    fn default() -> Self {
-        Self {
-            roots: Vec::new(),
-            nodes: Vec::new(),
-        }
-    }
 }
 
 /// Request types for IPC communication
@@ -73,6 +64,25 @@ pub enum Request {
     Ping,
     /// Get the full UI tree
     GetUiTree,
+    /// Find UI elements by label text
+    FindByLabel {
+        /// Pattern to match against labels
+        pattern: String,
+        /// If true, match exactly; if false, match substring
+        exact: bool,
+    },
+    /// Find UI elements by role
+    FindByRole {
+        /// Role to search for (e.g., "Button", "TextInput")
+        role: String,
+    },
+    /// Get a specific element by ID
+    GetElement {
+        /// Node ID to retrieve
+        id: u64,
+    },
+    /// Request a screenshot
+    TakeScreenshot,
 }
 
 /// Response types for IPC communication
@@ -83,6 +93,17 @@ pub enum Response {
     Pong,
     /// UI tree response
     UiTree(UiTree),
+    /// Multiple elements response
+    Elements(Vec<NodeInfo>),
+    /// Single element response (may be None if not found)
+    Element(Option<NodeInfo>),
+    /// Screenshot response
+    Screenshot {
+        /// Base64 encoded PNG data
+        data: String,
+        /// Image format (always "png")
+        format: String,
+    },
     /// Error response
     Error { message: String },
 }

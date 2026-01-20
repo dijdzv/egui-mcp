@@ -39,6 +39,13 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# Image processing
+image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
+
+# JSON Schema
+schemars = "0.8"
+
 # Internal crates
 egui-mcp-protocol = { path = "crates/egui-mcp-protocol" }
 egui-mcp-client = { path = "crates/egui-mcp-client" }

@@ -1,7 +1,11 @@
 //! Demo egui application for testing egui-mcp
 
 use eframe::egui;
+#[cfg(not(target_os = "linux"))]
 use egui_mcp_client::{McpClient, UiTreeBuilder};
+#[cfg(target_os = "linux")]
+use egui_mcp_client::McpClient;
+use image::ImageEncoder;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 
@@ -62,10 +66,59 @@ impl DemoApp {
             runtime,
         }
     }
+
+    /// Encode ColorImage to PNG bytes
+    fn encode_png(image: &egui::ColorImage) -> Option<Vec<u8>> {
+        let mut png_data = Vec::new();
+        let encoder = image::codecs::png::PngEncoder::new(&mut png_data);
+
+        // Convert RGBA pixels to bytes
+        let pixels: Vec<u8> = image
+            .pixels
+            .iter()
+            .flat_map(|c| [c.r(), c.g(), c.b(), c.a()])
+            .collect();
+
+        encoder
+            .write_image(
+                &pixels,
+                image.width() as u32,
+                image.height() as u32,
+                image::ExtendedColorType::Rgba8,
+            )
+            .ok()?;
+
+        Some(png_data)
+    }
 }
 
 impl eframe::App for DemoApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Check if screenshot is requested and send viewport command
+        let screenshot_requested = self
+            .runtime
+            .block_on(self.mcp_client.take_screenshot_request());
+        if screenshot_requested {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+        }
+
+        // Handle screenshot events
+        ctx.input(|i| {
+            for event in &i.events {
+                if let egui::Event::Screenshot { image, .. } = event {
+                    if let Some(png_data) = Self::encode_png(image) {
+                        tracing::info!("Screenshot captured: {} bytes", png_data.len());
+                        let client = self.mcp_client.clone();
+                        self.runtime.spawn(async move {
+                            client.set_screenshot(png_data).await;
+                        });
+                    } else {
+                        tracing::error!("Failed to encode screenshot as PNG");
+                    }
+                }
+            }
+        });
+
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("egui-mcp Demo");
 
@@ -103,7 +156,8 @@ impl eframe::App for DemoApp {
             ));
         });
 
-        // Update UI tree from AccessKit
+        // Update UI tree from AccessKit (not available on Linux without accesskit feature)
+        #[cfg(not(target_os = "linux"))]
         ctx.output(|output| {
             if let Some(ref update) = output.accesskit_update {
                 let tree = UiTreeBuilder::from_accesskit(update);

@@ -25,9 +25,9 @@ release:
 test:
     cargo test --workspace
 
-# Run demo app
-demo:
-    cargo run -p demo-app
+# Run demo app (via nixGL for WSLg compatibility)
+demo: build
+    nixGLIntel ./target/debug/demo-app 2>&1 | grep -v "ZINK\|MESA: error"
 
 # Run MCP server
 server:

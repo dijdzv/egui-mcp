@@ -1,7 +1,8 @@
 //! IPC client for connecting to egui applications
 
 use egui_mcp_protocol::{
-    ProtocolError, Request, Response, UiTree, default_socket_path, read_response, write_request,
+    NodeInfo, ProtocolError, Request, Response, UiTree, default_socket_path, read_response,
+    write_request,
 };
 use std::path::PathBuf;
 use tokio::net::UnixStream;
@@ -51,10 +52,73 @@ impl IpcClient {
         let response = self.send_request(&Request::GetUiTree).await?;
         match response {
             Response::UiTree(tree) => Ok(tree),
-            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                message,
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
             ))),
+        }
+    }
+
+    /// Find UI elements by label text
+    pub async fn find_by_label(
+        &self,
+        pattern: &str,
+        exact: bool,
+    ) -> Result<Vec<NodeInfo>, ProtocolError> {
+        let response = self
+            .send_request(&Request::FindByLabel {
+                pattern: pattern.to_string(),
+                exact,
+            })
+            .await?;
+        match response {
+            Response::Elements(elements) => Ok(elements),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
+    /// Find UI elements by role
+    pub async fn find_by_role(&self, role: &str) -> Result<Vec<NodeInfo>, ProtocolError> {
+        let response = self
+            .send_request(&Request::FindByRole {
+                role: role.to_string(),
+            })
+            .await?;
+        match response {
+            Response::Elements(elements) => Ok(elements),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
+    /// Get a specific UI element by ID
+    pub async fn get_element(&self, id: u64) -> Result<Option<NodeInfo>, ProtocolError> {
+        let response = self.send_request(&Request::GetElement { id }).await?;
+        match response {
+            Response::Element(element) => Ok(element),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
+    /// Take a screenshot of the egui application
+    /// Returns (base64_data, format)
+    pub async fn take_screenshot(&self) -> Result<(String, String), ProtocolError> {
+        let response = self.send_request(&Request::TakeScreenshot).await?;
+        match response {
+            Response::Screenshot { data, format } => Ok((data, format)),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
             _ => Err(ProtocolError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Unexpected response",
