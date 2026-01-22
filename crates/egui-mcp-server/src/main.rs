@@ -54,6 +54,22 @@ struct GetElementRequest {
     id: String,
 }
 
+/// Request for click_element tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ClickElementRequest {
+    #[schemars(description = "Node ID of the element to click (as string)")]
+    id: String,
+}
+
+/// Request for set_text tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct SetTextRequest {
+    #[schemars(description = "Node ID of the text input element (as string)")]
+    id: String,
+    #[schemars(description = "Text content to set")]
+    text: String,
+}
+
 /// egui-mcp server handler
 #[derive(Clone)]
 struct EguiMcpServer {
@@ -304,6 +320,107 @@ impl EguiMcpServer {
         .to_string()
     }
 
+    /// Click an element by ID using AT-SPI Action interface
+    #[tool(description = "Click a UI element by its ID (as string). Uses AT-SPI Action interface.")]
+    async fn click_element(
+        &self,
+        Parameters(ClickElementRequest { id }): Parameters<ClickElementRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::click_element_blocking("demo", id) {
+                Ok(true) => json!({
+                    "success": true,
+                    "message": format!("Clicked element with id {}", id)
+                })
+                .to_string(),
+                Ok(false) => json!({
+                    "success": false,
+                    "message": "Click action returned false"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "click_failed",
+                    "message": format!("Failed to click element: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            json!({
+                "error": "not_available",
+                "message": "Click action requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Set text content of a text input element
+    #[tool(
+        description = "Set text content of a text input element by its ID (as string). Uses AT-SPI EditableText interface."
+    )]
+    async fn set_text(
+        &self,
+        Parameters(SetTextRequest { id, text }): Parameters<SetTextRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::set_text_blocking("demo", id, &text) {
+                Ok(true) => json!({
+                    "success": true,
+                    "message": format!("Set text on element with id {}", id)
+                })
+                .to_string(),
+                Ok(false) => json!({
+                    "success": false,
+                    "message": "Set text action returned false"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "set_text_failed",
+                    "message": format!("Failed to set text: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            let _ = text;
+            json!({
+                "error": "not_available",
+                "message": "Set text requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
     /// Take a screenshot of the egui application
     #[tool(
         description = "Take a screenshot of the egui application. Returns base64-encoded PNG image data."
@@ -345,7 +462,9 @@ impl ServerHandler for EguiMcpServer {
                  the egui app is connected, 'get_ui_tree' to inspect the full UI structure, \
                  'find_by_label' for substring search, 'find_by_label_exact' for exact match, \
                  'find_by_role' to search by role (e.g., Button, TextInput), \
-                 'get_element' to get details by ID (pass ID as string), and \
+                 'get_element' to get details by ID (pass ID as string), \
+                 'click_element' to click an element by ID, \
+                 'set_text' to input text into a text field by ID, and \
                  'take_screenshot' to capture the current UI."
                     .into(),
             ),

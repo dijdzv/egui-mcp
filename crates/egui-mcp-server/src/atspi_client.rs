@@ -3,6 +3,7 @@
 use atspi_common::ObjectRef;
 use atspi_connection::AccessibilityConnection;
 use atspi_proxies::accessible::{AccessibleProxy, ObjectRefExt};
+use atspi_proxies::proxy_ext::ProxyExt;
 use egui_mcp_protocol::{NodeInfo, UiTree};
 use std::thread;
 
@@ -68,6 +69,31 @@ pub fn get_element_blocking(app_name: &str, id: u64) -> Result<Option<NodeInfo>,
     handle.join().unwrap()
 }
 
+/// Click an element by ID using AT-SPI Action interface
+pub fn click_element_blocking(app_name: &str, id: u64) -> Result<bool, BoxError> {
+    let app_name = app_name.to_string();
+    let handle = thread::spawn(move || {
+        async_std::task::block_on(async {
+            let client = AtspiClient::new().await?;
+            client.click_element(&app_name, id).await
+        })
+    });
+    handle.join().unwrap()
+}
+
+/// Set text content of an element by ID using AT-SPI EditableText interface
+pub fn set_text_blocking(app_name: &str, id: u64, text: &str) -> Result<bool, BoxError> {
+    let app_name = app_name.to_string();
+    let text = text.to_string();
+    let handle = thread::spawn(move || {
+        async_std::task::block_on(async {
+            let client = AtspiClient::new().await?;
+            client.set_text(&app_name, id, &text).await
+        })
+    });
+    handle.join().unwrap()
+}
+
 /// AT-SPI client for communicating with accessible applications
 pub struct AtspiClient {
     connection: AccessibilityConnection,
@@ -85,7 +111,18 @@ impl AtspiClient {
         &self,
         app_name: &str,
     ) -> Result<Option<UiTree>, BoxError> {
-        // Get the registry's accessible children (applications)
+        let app_ref = self.find_app_ref_by_name(app_name).await?;
+        let Some(app_ref) = app_ref else {
+            return Ok(None);
+        };
+        let app_proxy = app_ref
+            .as_accessible_proxy(self.connection.connection())
+            .await?;
+        self.build_ui_tree_from_proxy(&app_proxy).await
+    }
+
+    /// Find an application ObjectRef by name
+    async fn find_app_ref_by_name(&self, app_name: &str) -> Result<Option<ObjectRef>, BoxError> {
         let registry_proxy: AccessibleProxy<'_> =
             AccessibleProxy::builder(self.connection.connection())
                 .destination("org.a11y.atspi.Registry")?
@@ -103,11 +140,120 @@ impl AtspiClient {
 
             if name.contains(app_name) {
                 tracing::info!("Found application: {}", name);
-                return self.build_ui_tree_from_proxy(&app_proxy).await;
+                return Ok(Some(app_ref));
             }
         }
 
         Ok(None)
+    }
+
+    /// Find element info (destination and path) by ID within an application
+    async fn find_element_path_by_id(
+        &self,
+        app_name: &str,
+        target_id: u64,
+    ) -> Result<Option<(String, String)>, BoxError> {
+        let app_ref = self.find_app_ref_by_name(app_name).await?;
+        let Some(app_ref) = app_ref else {
+            return Ok(None);
+        };
+
+        let app_proxy = app_ref
+            .as_accessible_proxy(self.connection.connection())
+            .await?;
+
+        // Get the root's children (typically the window)
+        let children: Vec<ObjectRef> = app_proxy.get_children().await?;
+
+        for (idx, child_ref) in children.iter().enumerate() {
+            let window_id = idx as u64 + 1;
+
+            if let Some(path) =
+                Box::pin(self.find_path_in_tree(child_ref, window_id, target_id)).await?
+            {
+                return Ok(Some(path));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Recursively search for element path by ID
+    async fn find_path_in_tree(
+        &self,
+        obj_ref: &ObjectRef,
+        node_id: u64,
+        target_id: u64,
+    ) -> Result<Option<(String, String)>, BoxError> {
+        if node_id == target_id {
+            return Ok(Some((obj_ref.name.to_string(), obj_ref.path.to_string())));
+        }
+
+        let proxy = obj_ref
+            .as_accessible_proxy(self.connection.connection())
+            .await?;
+
+        // Get children
+        let children_refs: Vec<ObjectRef> = proxy.get_children().await.unwrap_or_default();
+        let base_id = node_id * 100;
+
+        for (idx, child_ref) in children_refs.iter().enumerate() {
+            let child_id = base_id + idx as u64 + 1;
+
+            // Depth limit
+            if child_id >= 1_000_000_000 {
+                continue;
+            }
+
+            if let Some(found) =
+                Box::pin(self.find_path_in_tree(child_ref, child_id, target_id)).await?
+            {
+                return Ok(Some(found));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Click an element using AT-SPI Action interface
+    pub async fn click_element(&self, app_name: &str, id: u64) -> Result<bool, BoxError> {
+        let path_info = self.find_element_path_by_id(app_name, id).await?;
+        let Some((destination, path)) = path_info else {
+            return Err(format!("Element with id {} not found", id).into());
+        };
+
+        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+            .destination(destination.as_str())?
+            .path(path.as_str())?
+            .build()
+            .await?;
+
+        let mut proxies = proxy.proxies().await?;
+        let action_proxy = proxies.action()?;
+
+        // Action index 0 is typically the default action (click for buttons)
+        let result = action_proxy.do_action(0).await?;
+        Ok(result)
+    }
+
+    /// Set text content using AT-SPI EditableText interface
+    pub async fn set_text(&self, app_name: &str, id: u64, text: &str) -> Result<bool, BoxError> {
+        let path_info = self.find_element_path_by_id(app_name, id).await?;
+        let Some((destination, path)) = path_info else {
+            return Err(format!("Element with id {} not found", id).into());
+        };
+
+        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+            .destination(destination.as_str())?
+            .path(path.as_str())?
+            .build()
+            .await?;
+
+        let mut proxies = proxy.proxies().await?;
+        let editable_text_proxy = proxies.editable_text()?;
+
+        let result = editable_text_proxy.set_text_contents(text).await?;
+        Ok(result)
     }
 
     /// Build a UiTree from an AccessibleProxy

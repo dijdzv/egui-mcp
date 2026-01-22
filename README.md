@@ -17,6 +17,8 @@ egui-mcp provides UI automation capabilities for [egui](https://github.com/emilk
 | `find_by_label_exact` | Search elements by label (exact match) | AT-SPI |
 | `find_by_role` | Search elements by role (Button, TextInput, etc.) | AT-SPI |
 | `get_element` | Get a specific element by ID | AT-SPI |
+| `click_element` | Click element by ID | AT-SPI Action |
+| `set_text` | Input text to text fields | AT-SPI EditableText |
 | `take_screenshot` | Capture application screenshot | IPC |
 | `ping` | Verify server is running | - |
 | `check_connection` | Check connection to egui app | IPC |
@@ -25,8 +27,6 @@ egui-mcp provides UI automation capabilities for [egui](https://github.com/emilk
 
 | Tool | Description | Method |
 |------|-------------|--------|
-| `click_element` | Click element by ID | AT-SPI Action |
-| `set_text` | Input text to text fields | AT-SPI EditableText |
 | `click_at` | Click at coordinates | IPC |
 | `keyboard_input` | Send keyboard input | IPC |
 | `scroll` | Scroll operation | IPC |
@@ -142,6 +142,8 @@ Once connected, the following MCP tools are available:
 - **`find_by_label_exact`** - Find elements with exact label match
 - **`find_by_role`** - Find elements by role (Button, TextInput, CheckBox, etc.)
 - **`get_element`** - Get element details by ID
+- **`click_element`** - Click an element by ID (uses AT-SPI Action)
+- **`set_text`** - Set text content of a text input by ID (uses AT-SPI EditableText)
 - **`take_screenshot`** - Capture screenshot (returns base64 PNG)
 
 ## Development
