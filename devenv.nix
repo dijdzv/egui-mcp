@@ -43,9 +43,16 @@ in
   };
 
   # https://devenv.sh/git-hooks/
+  # Use rust toolchain from languages.rust (rust-overlay) instead of nixpkgs
   git-hooks.hooks = {
-    rustfmt.enable = true;
-    clippy.enable = true;
+    rustfmt = {
+      enable = true;
+      entry = lib.mkForce "${config.languages.rust.toolchain.cargo}/bin/cargo fmt --all -- --check --color=always";
+    };
+    clippy = {
+      enable = true;
+      entry = lib.mkForce "${config.languages.rust.toolchain.cargo}/bin/cargo clippy -- -D warnings";
+    };
   };
 
   # https://devenv.sh/scripts/

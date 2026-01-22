@@ -1,10 +1,10 @@
 //! Demo egui application for testing egui-mcp
 
 use eframe::egui;
-#[cfg(not(target_os = "linux"))]
-use egui_mcp_client::{McpClient, UiTreeBuilder};
 #[cfg(target_os = "linux")]
 use egui_mcp_client::McpClient;
+#[cfg(not(target_os = "linux"))]
+use egui_mcp_client::{McpClient, UiTreeBuilder};
 use image::ImageEncoder;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
