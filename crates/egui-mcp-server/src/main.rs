@@ -1,8 +1,14 @@
 //! MCP server for egui UI automation
 //!
 //! This server provides MCP tools for interacting with egui applications.
+//! Architecture:
+//! - AT-SPI (Linux accessibility): UI tree, element search, clicks, text input
+//! - IPC (direct client): Screenshots, coordinate-based input, keyboard, scroll
 
 mod ipc_client;
+
+#[cfg(target_os = "linux")]
+mod atspi_client;
 
 use anyhow::Result;
 use ipc_client::IpcClient;
@@ -103,30 +109,35 @@ impl EguiMcpServer {
         }
     }
 
-    /// Get the UI tree from the connected egui application
+    /// Get the UI tree from the connected egui application via AT-SPI
     #[tool(description = "Get the full UI tree from the egui application as JSON")]
     async fn get_ui_tree(&self) -> String {
-        if !self.ipc_client.is_socket_available() {
-            return json!({
-                "error": "not_connected",
-                "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
-            }).to_string();
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::get_ui_tree_blocking("demo") {
+                Ok(Some(tree)) => {
+                    return serde_json::to_string_pretty(&tree).unwrap_or_else(|e| {
+                        json!({
+                            "error": "serialization_error",
+                            "message": format!("Failed to serialize UI tree: {}", e)
+                        })
+                        .to_string()
+                    });
+                }
+                Ok(None) => {
+                    tracing::info!("AT-SPI did not find any matching application");
+                }
+                Err(e) => {
+                    tracing::warn!("AT-SPI failed: {}", e);
+                }
+            }
         }
 
-        match self.ipc_client.get_ui_tree().await {
-            Ok(tree) => serde_json::to_string_pretty(&tree).unwrap_or_else(|e| {
-                json!({
-                    "error": "serialization_error",
-                    "message": format!("Failed to serialize UI tree: {}", e)
-                })
-                .to_string()
-            }),
-            Err(e) => json!({
-                "error": "connection_error",
-                "message": format!("Failed to get UI tree: {}", e)
-            })
-            .to_string(),
-        }
+        json!({
+            "error": "not_available",
+            "message": "UI tree access requires AT-SPI on Linux. Make sure the egui app is running."
+        })
+        .to_string()
     }
 
     /// Find UI elements by their label text (substring match)
@@ -135,31 +146,34 @@ impl EguiMcpServer {
         &self,
         Parameters(FindByLabelRequest { pattern }): Parameters<FindByLabelRequest>,
     ) -> String {
-        if !self.ipc_client.is_socket_available() {
-            return json!({
-                "error": "not_connected",
-                "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
-            }).to_string();
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::find_by_label_blocking("demo", &pattern, false) {
+                Ok(elements) => {
+                    return serde_json::to_string_pretty(&json!({
+                        "count": elements.len(),
+                        "elements": elements
+                    }))
+                    .unwrap_or_else(|e| {
+                        json!({
+                            "error": "serialization_error",
+                            "message": format!("Failed to serialize elements: {}", e)
+                        })
+                        .to_string()
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!("AT-SPI find_by_label failed: {}", e);
+                }
+            }
         }
 
-        match self.ipc_client.find_by_label(&pattern, false).await {
-            Ok(elements) => serde_json::to_string_pretty(&json!({
-                "count": elements.len(),
-                "elements": elements
-            }))
-            .unwrap_or_else(|e| {
-                json!({
-                    "error": "serialization_error",
-                    "message": format!("Failed to serialize elements: {}", e)
-                })
-                .to_string()
-            }),
-            Err(e) => json!({
-                "error": "connection_error",
-                "message": format!("Failed to find elements: {}", e)
-            })
-            .to_string(),
-        }
+        let _ = pattern; // suppress unused warning on non-Linux
+        json!({
+            "error": "not_available",
+            "message": "Element search requires AT-SPI on Linux."
+        })
+        .to_string()
     }
 
     /// Find UI elements by their label text (exact match)
@@ -168,31 +182,34 @@ impl EguiMcpServer {
         &self,
         Parameters(FindByLabelExactRequest { pattern }): Parameters<FindByLabelExactRequest>,
     ) -> String {
-        if !self.ipc_client.is_socket_available() {
-            return json!({
-                "error": "not_connected",
-                "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
-            }).to_string();
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::find_by_label_blocking("demo", &pattern, true) {
+                Ok(elements) => {
+                    return serde_json::to_string_pretty(&json!({
+                        "count": elements.len(),
+                        "elements": elements
+                    }))
+                    .unwrap_or_else(|e| {
+                        json!({
+                            "error": "serialization_error",
+                            "message": format!("Failed to serialize elements: {}", e)
+                        })
+                        .to_string()
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!("AT-SPI find_by_label_exact failed: {}", e);
+                }
+            }
         }
 
-        match self.ipc_client.find_by_label(&pattern, true).await {
-            Ok(elements) => serde_json::to_string_pretty(&json!({
-                "count": elements.len(),
-                "elements": elements
-            }))
-            .unwrap_or_else(|e| {
-                json!({
-                    "error": "serialization_error",
-                    "message": format!("Failed to serialize elements: {}", e)
-                })
-                .to_string()
-            }),
-            Err(e) => json!({
-                "error": "connection_error",
-                "message": format!("Failed to find elements: {}", e)
-            })
-            .to_string(),
-        }
+        let _ = pattern;
+        json!({
+            "error": "not_available",
+            "message": "Element search requires AT-SPI on Linux."
+        })
+        .to_string()
     }
 
     /// Find UI elements by their role
@@ -203,31 +220,34 @@ impl EguiMcpServer {
         &self,
         Parameters(FindByRoleRequest { role }): Parameters<FindByRoleRequest>,
     ) -> String {
-        if !self.ipc_client.is_socket_available() {
-            return json!({
-                "error": "not_connected",
-                "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
-            }).to_string();
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::find_by_role_blocking("demo", &role) {
+                Ok(elements) => {
+                    return serde_json::to_string_pretty(&json!({
+                        "count": elements.len(),
+                        "elements": elements
+                    }))
+                    .unwrap_or_else(|e| {
+                        json!({
+                            "error": "serialization_error",
+                            "message": format!("Failed to serialize elements: {}", e)
+                        })
+                        .to_string()
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!("AT-SPI find_by_role failed: {}", e);
+                }
+            }
         }
 
-        match self.ipc_client.find_by_role(&role).await {
-            Ok(elements) => serde_json::to_string_pretty(&json!({
-                "count": elements.len(),
-                "elements": elements
-            }))
-            .unwrap_or_else(|e| {
-                json!({
-                    "error": "serialization_error",
-                    "message": format!("Failed to serialize elements: {}", e)
-                })
-                .to_string()
-            }),
-            Err(e) => json!({
-                "error": "connection_error",
-                "message": format!("Failed to find elements: {}", e)
-            })
-            .to_string(),
-        }
+        let _ = role;
+        json!({
+            "error": "not_available",
+            "message": "Element search requires AT-SPI on Linux."
+        })
+        .to_string()
     }
 
     /// Get detailed information about a specific UI element by ID
@@ -238,13 +258,6 @@ impl EguiMcpServer {
         &self,
         Parameters(GetElementRequest { id }): Parameters<GetElementRequest>,
     ) -> String {
-        if !self.ipc_client.is_socket_available() {
-            return json!({
-                "error": "not_connected",
-                "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
-            }).to_string();
-        }
-
         let id: u64 = match id.parse() {
             Ok(id) => id,
             Err(_) => {
@@ -256,25 +269,39 @@ impl EguiMcpServer {
             }
         };
 
-        match self.ipc_client.get_element(id).await {
-            Ok(Some(element)) => serde_json::to_string_pretty(&element).unwrap_or_else(|e| {
-                json!({
-                    "error": "serialization_error",
-                    "message": format!("Failed to serialize element: {}", e)
-                })
-                .to_string()
-            }),
-            Ok(None) => json!({
-                "error": "not_found",
-                "message": format!("No element found with id {}", id)
-            })
-            .to_string(),
-            Err(e) => json!({
-                "error": "connection_error",
-                "message": format!("Failed to get element: {}", e)
-            })
-            .to_string(),
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::get_element_blocking("demo", id) {
+                Ok(Some(element)) => {
+                    return serde_json::to_string_pretty(&element).unwrap_or_else(|e| {
+                        json!({
+                            "error": "serialization_error",
+                            "message": format!("Failed to serialize element: {}", e)
+                        })
+                        .to_string()
+                    });
+                }
+                Ok(None) => {
+                    return json!({
+                        "error": "not_found",
+                        "message": format!("No element found with id {}", id)
+                    })
+                    .to_string();
+                }
+                Err(e) => {
+                    tracing::warn!("AT-SPI get_element failed: {}", e);
+                }
+            }
         }
+
+        #[cfg(not(target_os = "linux"))]
+        let _ = id;
+
+        json!({
+            "error": "not_available",
+            "message": "Element access requires AT-SPI on Linux."
+        })
+        .to_string()
     }
 
     /// Take a screenshot of the egui application
@@ -335,6 +362,16 @@ async fn main() -> Result<()> {
         .init();
 
     tracing::info!("Starting egui-mcp server...");
+
+    // Enable session accessibility on Linux
+    // This tells accessible applications (like egui with AccessKit) that an AT client is present
+    #[cfg(target_os = "linux")]
+    {
+        match atspi_connection::set_session_accessibility(true).await {
+            Ok(()) => tracing::info!("Session accessibility enabled"),
+            Err(e) => tracing::warn!("Failed to enable session accessibility: {}", e),
+        }
+    }
 
     // Create and run the server
     let server = EguiMcpServer::new();

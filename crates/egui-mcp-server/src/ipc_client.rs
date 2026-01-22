@@ -1,7 +1,17 @@
 //! IPC client for connecting to egui applications
+//!
+//! This client handles features that require direct application access:
+//! - Screenshots
+//! - Coordinate-based input (clicks, drags)
+//! - Keyboard input
+//! - Scroll events
+//!
+//! Note: UI tree access and element-based interactions are handled via AT-SPI.
+
+#![allow(dead_code)] // Methods will be used when MCP tools for input are added
 
 use egui_mcp_protocol::{
-    NodeInfo, ProtocolError, Request, Response, UiTree, default_socket_path, read_response,
+    MouseButton, ProtocolError, Request, Response, default_socket_path, read_response,
     write_request,
 };
 use std::path::PathBuf;
@@ -47,77 +57,111 @@ impl IpcClient {
         }
     }
 
-    /// Get the UI tree from the egui application
-    pub async fn get_ui_tree(&self) -> Result<UiTree, ProtocolError> {
-        let response = self.send_request(&Request::GetUiTree).await?;
-        match response {
-            Response::UiTree(tree) => Ok(tree),
-            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
-            _ => Err(ProtocolError::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Unexpected response",
-            ))),
-        }
-    }
-
-    /// Find UI elements by label text
-    pub async fn find_by_label(
-        &self,
-        pattern: &str,
-        exact: bool,
-    ) -> Result<Vec<NodeInfo>, ProtocolError> {
-        let response = self
-            .send_request(&Request::FindByLabel {
-                pattern: pattern.to_string(),
-                exact,
-            })
-            .await?;
-        match response {
-            Response::Elements(elements) => Ok(elements),
-            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
-            _ => Err(ProtocolError::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Unexpected response",
-            ))),
-        }
-    }
-
-    /// Find UI elements by role
-    pub async fn find_by_role(&self, role: &str) -> Result<Vec<NodeInfo>, ProtocolError> {
-        let response = self
-            .send_request(&Request::FindByRole {
-                role: role.to_string(),
-            })
-            .await?;
-        match response {
-            Response::Elements(elements) => Ok(elements),
-            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
-            _ => Err(ProtocolError::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Unexpected response",
-            ))),
-        }
-    }
-
-    /// Get a specific UI element by ID
-    pub async fn get_element(&self, id: u64) -> Result<Option<NodeInfo>, ProtocolError> {
-        let response = self.send_request(&Request::GetElement { id }).await?;
-        match response {
-            Response::Element(element) => Ok(element),
-            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
-            _ => Err(ProtocolError::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Unexpected response",
-            ))),
-        }
-    }
-
     /// Take a screenshot of the egui application
     /// Returns (base64_data, format)
     pub async fn take_screenshot(&self) -> Result<(String, String), ProtocolError> {
         let response = self.send_request(&Request::TakeScreenshot).await?;
         match response {
             Response::Screenshot { data, format } => Ok((data, format)),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
+    /// Click at specific coordinates
+    pub async fn click_at(&self, x: f32, y: f32, button: MouseButton) -> Result<(), ProtocolError> {
+        let response = self
+            .send_request(&Request::ClickAt { x, y, button })
+            .await?;
+        match response {
+            Response::Success => Ok(()),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
+    /// Send keyboard input
+    pub async fn keyboard_input(&self, key: &str) -> Result<(), ProtocolError> {
+        let response = self
+            .send_request(&Request::KeyboardInput {
+                key: key.to_string(),
+            })
+            .await?;
+        match response {
+            Response::Success => Ok(()),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
+    /// Scroll at specific coordinates
+    pub async fn scroll(
+        &self,
+        x: f32,
+        y: f32,
+        delta_x: f32,
+        delta_y: f32,
+    ) -> Result<(), ProtocolError> {
+        let response = self
+            .send_request(&Request::Scroll {
+                x,
+                y,
+                delta_x,
+                delta_y,
+            })
+            .await?;
+        match response {
+            Response::Success => Ok(()),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
+    /// Move mouse to specific coordinates
+    pub async fn move_mouse(&self, x: f32, y: f32) -> Result<(), ProtocolError> {
+        let response = self.send_request(&Request::MoveMouse { x, y }).await?;
+        match response {
+            Response::Success => Ok(()),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
+    /// Drag from one position to another
+    pub async fn drag(
+        &self,
+        start_x: f32,
+        start_y: f32,
+        end_x: f32,
+        end_y: f32,
+        button: MouseButton,
+    ) -> Result<(), ProtocolError> {
+        let response = self
+            .send_request(&Request::Drag {
+                start_x,
+                start_y,
+                end_x,
+                end_y,
+                button,
+            })
+            .await?;
+        match response {
+            Response::Success => Ok(()),
             Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
             _ => Err(ProtocolError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,

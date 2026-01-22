@@ -1,10 +1,14 @@
 //! Demo egui application for testing egui-mcp
+//!
+//! This app demonstrates integration with egui-mcp-client for:
+//! - Screenshots
+//! - (Future) Coordinate-based input
+//!
+//! Note: UI tree access is handled via AT-SPI on the server side
+//! and doesn't require any special code in the egui application.
 
 use eframe::egui;
-#[cfg(target_os = "linux")]
 use egui_mcp_client::McpClient;
-#[cfg(not(target_os = "linux"))]
-use egui_mcp_client::{McpClient, UiTreeBuilder};
 use image::ImageEncoder;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
@@ -53,11 +57,10 @@ struct DemoApp {
 }
 
 impl DemoApp {
-    fn new(
-        _cc: &eframe::CreationContext<'_>,
-        mcp_client: McpClient,
-        runtime: Arc<Runtime>,
-    ) -> Self {
+    fn new(cc: &eframe::CreationContext<'_>, mcp_client: McpClient, runtime: Arc<Runtime>) -> Self {
+        // Enable AccessKit at initialization for AT-SPI integration
+        cc.egui_ctx.enable_accesskit();
+
         Self {
             name: String::new(),
             counter: 0,
@@ -154,18 +157,6 @@ impl eframe::App for DemoApp {
                     &self.name
                 }
             ));
-        });
-
-        // Update UI tree from AccessKit (not available on Linux without accesskit feature)
-        #[cfg(not(target_os = "linux"))]
-        ctx.output(|output| {
-            if let Some(ref update) = output.accesskit_update {
-                let tree = UiTreeBuilder::from_accesskit(update);
-                let client = self.mcp_client.clone();
-                self.runtime.spawn(async move {
-                    client.update_ui_tree(tree).await;
-                });
-            }
         });
     }
 }

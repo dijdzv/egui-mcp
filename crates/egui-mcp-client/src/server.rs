@@ -1,8 +1,14 @@
 //! IPC server for handling MCP requests
+//!
+//! This server handles requests that require direct application access:
+//! - Screenshots
+//! - Coordinate-based input
+//! - Keyboard input
+//! - Scroll events
 
-use crate::McpClient;
+use crate::{McpClient, PendingInput};
 use base64::Engine;
-use egui_mcp_protocol::{NodeInfo, ProtocolError, Request, Response, read_request, write_response};
+use egui_mcp_protocol::{ProtocolError, Request, Response, read_request, write_response};
 use tokio::net::{UnixListener, UnixStream};
 
 /// IPC server that listens for MCP requests
@@ -69,25 +75,7 @@ impl IpcServer {
     async fn handle_request(request: &Request, client: &McpClient) -> Response {
         match request {
             Request::Ping => Response::Pong,
-            Request::GetUiTree => {
-                let tree = client.get_ui_tree().await;
-                Response::UiTree(tree)
-            }
-            Request::FindByLabel { pattern, exact } => {
-                let tree = client.get_ui_tree().await;
-                let elements = Self::find_by_label(&tree.nodes, pattern, *exact);
-                Response::Elements(elements)
-            }
-            Request::FindByRole { role } => {
-                let tree = client.get_ui_tree().await;
-                let elements = Self::find_by_role(&tree.nodes, role);
-                Response::Elements(elements)
-            }
-            Request::GetElement { id } => {
-                let tree = client.get_ui_tree().await;
-                let element = tree.nodes.into_iter().find(|n| n.id == *id);
-                Response::Element(element)
-            }
+
             Request::TakeScreenshot => {
                 // Request a screenshot from the UI
                 client.request_screenshot().await;
@@ -114,34 +102,67 @@ impl IpcServer {
                     }
                 }
             }
+
+            Request::ClickAt { x, y, button } => {
+                client
+                    .queue_input(PendingInput::Click {
+                        x: *x,
+                        y: *y,
+                        button: *button,
+                    })
+                    .await;
+                Response::Success
+            }
+
+            Request::MoveMouse { x, y } => {
+                client
+                    .queue_input(PendingInput::MoveMouse { x: *x, y: *y })
+                    .await;
+                Response::Success
+            }
+
+            Request::KeyboardInput { key } => {
+                client
+                    .queue_input(PendingInput::Keyboard { key: key.clone() })
+                    .await;
+                Response::Success
+            }
+
+            Request::Scroll {
+                x,
+                y,
+                delta_x,
+                delta_y,
+            } => {
+                client
+                    .queue_input(PendingInput::Scroll {
+                        x: *x,
+                        y: *y,
+                        delta_x: *delta_x,
+                        delta_y: *delta_y,
+                    })
+                    .await;
+                Response::Success
+            }
+
+            Request::Drag {
+                start_x,
+                start_y,
+                end_x,
+                end_y,
+                button,
+            } => {
+                client
+                    .queue_input(PendingInput::Drag {
+                        start_x: *start_x,
+                        start_y: *start_y,
+                        end_x: *end_x,
+                        end_y: *end_y,
+                        button: *button,
+                    })
+                    .await;
+                Response::Success
+            }
         }
-    }
-
-    /// Find nodes by label (exact or substring match)
-    fn find_by_label(nodes: &[NodeInfo], pattern: &str, exact: bool) -> Vec<NodeInfo> {
-        nodes
-            .iter()
-            .filter(|node| {
-                if let Some(ref label) = node.label {
-                    if exact {
-                        label == pattern
-                    } else {
-                        label.contains(pattern)
-                    }
-                } else {
-                    false
-                }
-            })
-            .cloned()
-            .collect()
-    }
-
-    /// Find nodes by role
-    fn find_by_role(nodes: &[NodeInfo], role: &str) -> Vec<NodeInfo> {
-        nodes
-            .iter()
-            .filter(|node| node.role.eq_ignore_ascii_case(role))
-            .cloned()
-            .collect()
     }
 }
