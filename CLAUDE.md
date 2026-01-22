@@ -76,9 +76,16 @@ just server   # MCP サーバーを実行
 
 ### Branch Strategy
 
-- **main**: 安定版。直接 push 可能（CI でリリース PR が自動作成される）
+- **main**: 保護ブランチ。直接 push 禁止、PR 経由のみ
 - **feature/xxx**: 新機能開発用
 - **fix/xxx**: バグ修正用
+
+### Branch Protection Rules (main)
+
+GitHub で以下を設定済み:
+- Require a pull request before merging
+- Require status checks to pass (check, test, clippy, fmt)
+- Do not allow bypassing the above settings
 
 ### Conventional Commits (必須)
 
