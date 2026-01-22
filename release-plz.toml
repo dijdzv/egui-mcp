@@ -1,0 +1,27 @@
+[workspace]
+# Create a single release PR for the entire workspace
+pr_draft = false
+# Generate changelog
+changelog_update = true
+# Commit message for release
+git_release_enable = true
+git_tag_enable = true
+
+# Packages to publish (in order)
+[[package]]
+name = "egui-mcp-protocol"
+publish = true
+
+[[package]]
+name = "egui-mcp-client"
+publish = true
+
+[[package]]
+name = "egui-mcp-server"
+publish = true
+
+# Demo app is not published
+[[package]]
+name = "demo-app"
+publish = false
+changelog_update = false

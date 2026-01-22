@@ -71,3 +71,77 @@ just server   # MCP サーバーを実行
 - **rmcp**: Rust MCP SDK。`#[tool_router]` と `#[tool_handler]` マクロを提供
 - **accesskit**: egui からアクセシビリティツリーを抽出
 - **tokio**: IPC 通信用の async ランタイム
+
+## Git Workflow
+
+### Branch Strategy
+
+- **main**: 安定版。直接 push 可能（CI でリリース PR が自動作成される）
+- **feature/xxx**: 新機能開発用
+- **fix/xxx**: バグ修正用
+
+### Conventional Commits (必須)
+
+このプロジェクトは [Conventional Commits](https://www.conventionalcommits.org/) に従う。
+release-plz がコミットメッセージからバージョンを自動判定する。
+
+#### フォーマット
+
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+#### Types
+
+| Type | 説明 | バージョン |
+|------|------|-----------|
+| `feat` | 新機能 | MINOR (0.x.0 → 0.x+1.0) |
+| `fix` | バグ修正 | PATCH (0.0.x → 0.0.x+1) |
+| `docs` | ドキュメントのみ | - |
+| `style` | フォーマット変更（コード動作に影響なし） | - |
+| `refactor` | リファクタリング（機能変更なし） | - |
+| `perf` | パフォーマンス改善 | PATCH |
+| `test` | テスト追加・修正 | - |
+| `chore` | ビルド、CI、依存関係など | - |
+
+#### Breaking Changes
+
+破壊的変更は `!` を付けるか、footer に `BREAKING CHANGE:` を記載:
+
+```bash
+feat!: change API response format
+
+# または
+feat: change API response format
+
+BREAKING CHANGE: The response now returns JSON instead of plain text.
+```
+
+#### 例
+
+```bash
+# 新機能
+git commit -m "feat: add hover tool for mouse movement"
+
+# バグ修正
+git commit -m "fix: correct element bounds calculation"
+
+# スコープ付き
+git commit -m "feat(server): add drag_element tool"
+
+# 破壊的変更
+git commit -m "feat!: rename click_at to click_coordinates"
+```
+
+### Release Process
+
+1. main に push すると release-plz が自動で Release PR を作成
+2. PR には CHANGELOG とバージョン bump が含まれる
+3. PR をマージすると自動で:
+   - Git tag 作成
+   - GitHub Release 作成
+   - crates.io に publish

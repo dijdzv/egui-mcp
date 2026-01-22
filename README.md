@@ -198,6 +198,39 @@ egui-mcp/
 └── justfile                # Build commands
 ```
 
+## Contributing
+
+### Commit Messages
+
+This project uses [Conventional Commits](https://www.conventionalcommits.org/) for automatic versioning.
+
+```bash
+# New feature (bumps minor version)
+git commit -m "feat: add new tool"
+
+# Bug fix (bumps patch version)
+git commit -m "fix: correct calculation"
+
+# Breaking change (bumps major version)
+git commit -m "feat!: change API format"
+```
+
+| Type | Description |
+|------|-------------|
+| `feat` | New feature |
+| `fix` | Bug fix |
+| `docs` | Documentation only |
+| `refactor` | Code refactoring |
+| `test` | Adding tests |
+| `chore` | Build, CI, dependencies |
+
+### Release Process
+
+Releases are automated via [release-plz](https://release-plz.dev/):
+
+1. Push to `main` triggers automatic Release PR creation
+2. Merge the Release PR to publish to crates.io
+
 ## License
 
 MIT OR Apache-2.0
