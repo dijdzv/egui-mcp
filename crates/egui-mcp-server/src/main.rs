@@ -11,6 +11,7 @@ mod ipc_client;
 mod atspi_client;
 
 use anyhow::Result;
+use egui_mcp_protocol::MouseButton;
 use ipc_client::IpcClient;
 use rmcp::{
     ServerHandler, ServiceExt,
@@ -68,6 +69,37 @@ struct SetTextRequest {
     id: String,
     #[schemars(description = "Text content to set")]
     text: String,
+}
+
+/// Request for click_at tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ClickAtRequest {
+    #[schemars(description = "X coordinate")]
+    x: f32,
+    #[schemars(description = "Y coordinate")]
+    y: f32,
+    #[schemars(description = "Mouse button: 'left', 'right', or 'middle' (default: 'left')")]
+    button: Option<String>,
+}
+
+/// Request for keyboard_input tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct KeyboardInputRequest {
+    #[schemars(description = "Key to send (e.g., 'a', 'Enter', 'Escape', 'Tab')")]
+    key: String,
+}
+
+/// Request for scroll tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ScrollRequest {
+    #[schemars(description = "X coordinate where to scroll")]
+    x: f32,
+    #[schemars(description = "Y coordinate where to scroll")]
+    y: f32,
+    #[schemars(description = "Horizontal scroll delta (positive = right)")]
+    delta_x: Option<f32>,
+    #[schemars(description = "Vertical scroll delta (positive = down)")]
+    delta_y: Option<f32>,
 }
 
 /// egui-mcp server handler
@@ -447,6 +479,101 @@ impl EguiMcpServer {
             .to_string(),
         }
     }
+
+    /// Click at specific coordinates
+    #[tool(description = "Click at specific coordinates in the egui application window")]
+    async fn click_at(
+        &self,
+        Parameters(ClickAtRequest { x, y, button }): Parameters<ClickAtRequest>,
+    ) -> String {
+        if !self.ipc_client.is_socket_available() {
+            return json!({
+                "error": "not_connected",
+                "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
+            }).to_string();
+        }
+
+        let mouse_button = match button.as_deref() {
+            Some("right") => MouseButton::Right,
+            Some("middle") => MouseButton::Middle,
+            _ => MouseButton::Left,
+        };
+
+        match self.ipc_client.click_at(x, y, mouse_button).await {
+            Ok(()) => json!({
+                "success": true,
+                "message": format!("Clicked at ({}, {})", x, y)
+            })
+            .to_string(),
+            Err(e) => json!({
+                "error": "click_error",
+                "message": format!("Failed to click: {}", e)
+            })
+            .to_string(),
+        }
+    }
+
+    /// Send keyboard input
+    #[tool(description = "Send keyboard input to the egui application")]
+    async fn keyboard_input(
+        &self,
+        Parameters(KeyboardInputRequest { key }): Parameters<KeyboardInputRequest>,
+    ) -> String {
+        if !self.ipc_client.is_socket_available() {
+            return json!({
+                "error": "not_connected",
+                "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
+            }).to_string();
+        }
+
+        match self.ipc_client.keyboard_input(&key).await {
+            Ok(()) => json!({
+                "success": true,
+                "message": format!("Sent key: {}", key)
+            })
+            .to_string(),
+            Err(e) => json!({
+                "error": "keyboard_error",
+                "message": format!("Failed to send keyboard input: {}", e)
+            })
+            .to_string(),
+        }
+    }
+
+    /// Scroll at specific coordinates
+    #[tool(description = "Scroll at specific coordinates in the egui application window")]
+    async fn scroll(
+        &self,
+        Parameters(ScrollRequest {
+            x,
+            y,
+            delta_x,
+            delta_y,
+        }): Parameters<ScrollRequest>,
+    ) -> String {
+        if !self.ipc_client.is_socket_available() {
+            return json!({
+                "error": "not_connected",
+                "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
+            }).to_string();
+        }
+
+        let dx = delta_x.unwrap_or(0.0);
+        let dy = delta_y.unwrap_or(0.0);
+
+        match self.ipc_client.scroll(x, y, dx, dy).await {
+            Ok(()) => json!({
+                "success": true,
+                "message": format!("Scrolled at ({}, {}) with delta ({}, {})", x, y, dx, dy)
+            })
+            .to_string(),
+            Err(e) => json!({
+                "error": "scroll_error",
+                "message": format!("Failed to scroll: {}", e)
+            })
+            .to_string(),
+        }
+    }
 }
 
 #[tool_handler]
@@ -463,9 +590,12 @@ impl ServerHandler for EguiMcpServer {
                  'find_by_label' for substring search, 'find_by_label_exact' for exact match, \
                  'find_by_role' to search by role (e.g., Button, TextInput), \
                  'get_element' to get details by ID (pass ID as string), \
-                 'click_element' to click an element by ID, \
-                 'set_text' to input text into a text field by ID, and \
-                 'take_screenshot' to capture the current UI."
+                 'click_element' to click an element by ID (AT-SPI), \
+                 'set_text' to input text into a text field by ID (AT-SPI), \
+                 'click_at' to click at specific coordinates (IPC), \
+                 'keyboard_input' to send keyboard input (IPC), \
+                 'scroll' to scroll at specific coordinates (IPC), and \
+                 'take_screenshot' to capture the current UI (IPC)."
                     .into(),
             ),
         }

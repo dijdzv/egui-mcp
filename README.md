@@ -19,17 +19,12 @@ egui-mcp provides UI automation capabilities for [egui](https://github.com/emilk
 | `get_element` | Get a specific element by ID | AT-SPI |
 | `click_element` | Click element by ID | AT-SPI Action |
 | `set_text` | Input text to text fields | AT-SPI EditableText |
-| `take_screenshot` | Capture application screenshot | IPC |
-| `ping` | Verify server is running | - |
-| `check_connection` | Check connection to egui app | IPC |
-
-### Planned
-
-| Tool | Description | Method |
-|------|-------------|--------|
 | `click_at` | Click at coordinates | IPC |
 | `keyboard_input` | Send keyboard input | IPC |
 | `scroll` | Scroll operation | IPC |
+| `take_screenshot` | Capture application screenshot | IPC |
+| `ping` | Verify server is running | - |
+| `check_connection` | Check connection to egui app | IPC |
 
 ## Architecture
 
@@ -142,9 +137,12 @@ Once connected, the following MCP tools are available:
 - **`find_by_label_exact`** - Find elements with exact label match
 - **`find_by_role`** - Find elements by role (Button, TextInput, CheckBox, etc.)
 - **`get_element`** - Get element details by ID
-- **`click_element`** - Click an element by ID (uses AT-SPI Action)
-- **`set_text`** - Set text content of a text input by ID (uses AT-SPI EditableText)
-- **`take_screenshot`** - Capture screenshot (returns base64 PNG)
+- **`click_element`** - Click an element by ID (AT-SPI Action)
+- **`set_text`** - Set text content of a text input by ID (AT-SPI EditableText)
+- **`click_at`** - Click at specific coordinates (IPC)
+- **`keyboard_input`** - Send keyboard input (IPC)
+- **`scroll`** - Scroll at specific coordinates (IPC)
+- **`take_screenshot`** - Capture screenshot (IPC, returns base64 PNG)
 
 ## Development
 

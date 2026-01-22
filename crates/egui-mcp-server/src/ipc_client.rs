@@ -8,7 +8,7 @@
 //!
 //! Note: UI tree access and element-based interactions are handled via AT-SPI.
 
-#![allow(dead_code)] // Methods will be used when MCP tools for input are added
+#![allow(dead_code)] // move_mouse and drag methods will be used when MCP tools are added
 
 use egui_mcp_protocol::{
     MouseButton, ProtocolError, Request, Response, default_socket_path, read_response,
