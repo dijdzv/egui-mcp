@@ -1,0 +1,44 @@
+name: Release Binary
+
+on:
+  push:
+    tags:
+      - 'egui-mcp-server-v*'
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  upload-binary:
+    name: Upload Binary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwayland-dev libxkbcommon-dev libdbus-1-dev
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#egui-mcp-server-}" >> $GITHUB_OUTPUT
+
+      - name: Upload binary
+        uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: egui-mcp-server
+          target: x86_64-unknown-linux-gnu
+          archive: egui-mcp-server-${{ steps.version.outputs.version }}-x86_64-unknown-linux-gnu
+          checksum: sha256
+          token: ${{ secrets.GITHUB_TOKEN }}
