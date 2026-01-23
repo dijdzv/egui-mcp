@@ -8,8 +8,6 @@
 //!
 //! Note: UI tree access and element-based interactions are handled via AT-SPI.
 
-#![allow(dead_code)] // move_mouse and drag methods will be used when MCP tools are added
-
 use egui_mcp_protocol::{
     MouseButton, ProtocolError, Request, Response, default_socket_path, read_response,
     write_request,
@@ -159,6 +157,26 @@ impl IpcClient {
                 end_y,
                 button,
             })
+            .await?;
+        match response {
+            Response::Success => Ok(()),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
+    /// Double click at specific coordinates
+    pub async fn double_click(
+        &self,
+        x: f32,
+        y: f32,
+        button: MouseButton,
+    ) -> Result<(), ProtocolError> {
+        let response = self
+            .send_request(&Request::DoubleClick { x, y, button })
             .await?;
         match response {
             Response::Success => Ok(()),

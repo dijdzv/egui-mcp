@@ -25,6 +25,8 @@ pub use server::IpcServer;
 pub enum PendingInput {
     /// Click at coordinates
     Click { x: f32, y: f32, button: MouseButton },
+    /// Double click at coordinates
+    DoubleClick { x: f32, y: f32, button: MouseButton },
     /// Move mouse to coordinates
     MoveMouse { x: f32, y: f32 },
     /// Keyboard input

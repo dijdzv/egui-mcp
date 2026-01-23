@@ -24,18 +24,18 @@ All initially planned features have been implemented.
 
 ---
 
-## Phase 6: Enhanced Interactions (Proposed)
+## Phase 6: Enhanced Interactions (In Progress)
 
 Features inspired by Playwright and Chrome DevTools MCP.
 
-### Priority 1: Mouse Operations
+### Priority 1: Mouse Operations ✅
 
-| Tool | Description | Method | Reference |
-|------|-------------|--------|-----------|
-| `hover` | Move mouse to element/coordinates | IPC (move_mouse) | Playwright hover() |
-| `double_click` | Double click at coordinates | IPC (new) | Playwright dblclick() |
-| `drag` | Drag from point A to point B | IPC (drag) | Playwright dragTo() |
-| `drag_element` | Drag element to target | AT-SPI + IPC | Playwright dragTo() |
+| Tool | Description | Method | Reference | Status |
+|------|-------------|--------|-----------|--------|
+| `hover` | Move mouse to element/coordinates | IPC (move_mouse) | Playwright hover() | ✅ Done |
+| `double_click` | Double click at coordinates | IPC | Playwright dblclick() | ✅ Done |
+| `drag` | Drag from point A to point B | IPC (drag) | Playwright dragTo() | ✅ Done |
+| `drag_element` | Drag element to target | AT-SPI + IPC | Playwright dragTo() | ⏳ Planned |
 
 ### Priority 2: Element Information (AT-SPI Component)
 

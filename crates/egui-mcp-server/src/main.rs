@@ -102,6 +102,41 @@ struct ScrollRequest {
     delta_y: Option<f32>,
 }
 
+/// Request for hover tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct HoverRequest {
+    #[schemars(description = "X coordinate to move mouse to")]
+    x: f32,
+    #[schemars(description = "Y coordinate to move mouse to")]
+    y: f32,
+}
+
+/// Request for drag tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct DragRequest {
+    #[schemars(description = "Starting X coordinate")]
+    start_x: f32,
+    #[schemars(description = "Starting Y coordinate")]
+    start_y: f32,
+    #[schemars(description = "Ending X coordinate")]
+    end_x: f32,
+    #[schemars(description = "Ending Y coordinate")]
+    end_y: f32,
+    #[schemars(description = "Mouse button: 'left', 'right', or 'middle' (default: 'left')")]
+    button: Option<String>,
+}
+
+/// Request for double_click tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct DoubleClickRequest {
+    #[schemars(description = "X coordinate")]
+    x: f32,
+    #[schemars(description = "Y coordinate")]
+    y: f32,
+    #[schemars(description = "Mouse button: 'left', 'right', or 'middle' (default: 'left')")]
+    button: Option<String>,
+}
+
 /// egui-mcp server handler
 #[derive(Clone)]
 struct EguiMcpServer {
@@ -574,6 +609,104 @@ impl EguiMcpServer {
             .to_string(),
         }
     }
+
+    /// Move mouse to specific coordinates (hover)
+    #[tool(
+        description = "Move mouse to specific coordinates in the egui application window (hover)"
+    )]
+    async fn hover(&self, Parameters(HoverRequest { x, y }): Parameters<HoverRequest>) -> String {
+        if !self.ipc_client.is_socket_available() {
+            return json!({
+                "error": "not_connected",
+                "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
+            }).to_string();
+        }
+
+        match self.ipc_client.move_mouse(x, y).await {
+            Ok(()) => json!({
+                "success": true,
+                "message": format!("Moved mouse to ({}, {})", x, y)
+            })
+            .to_string(),
+            Err(e) => json!({
+                "error": "hover_error",
+                "message": format!("Failed to move mouse: {}", e)
+            })
+            .to_string(),
+        }
+    }
+
+    /// Drag from one point to another
+    #[tool(description = "Drag from one point to another in the egui application window")]
+    async fn drag(
+        &self,
+        Parameters(DragRequest {
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            button,
+        }): Parameters<DragRequest>,
+    ) -> String {
+        if !self.ipc_client.is_socket_available() {
+            return json!({
+                "error": "not_connected",
+                "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
+            }).to_string();
+        }
+
+        let mouse_button = match button.as_deref() {
+            Some("right") => MouseButton::Right,
+            Some("middle") => MouseButton::Middle,
+            _ => MouseButton::Left,
+        };
+
+        match self.ipc_client.drag(start_x, start_y, end_x, end_y, mouse_button).await {
+            Ok(()) => json!({
+                "success": true,
+                "message": format!("Dragged from ({}, {}) to ({}, {})", start_x, start_y, end_x, end_y)
+            })
+            .to_string(),
+            Err(e) => json!({
+                "error": "drag_error",
+                "message": format!("Failed to drag: {}", e)
+            })
+            .to_string(),
+        }
+    }
+
+    /// Double click at specific coordinates
+    #[tool(description = "Double click at specific coordinates in the egui application window")]
+    async fn double_click(
+        &self,
+        Parameters(DoubleClickRequest { x, y, button }): Parameters<DoubleClickRequest>,
+    ) -> String {
+        if !self.ipc_client.is_socket_available() {
+            return json!({
+                "error": "not_connected",
+                "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
+            }).to_string();
+        }
+
+        let mouse_button = match button.as_deref() {
+            Some("right") => MouseButton::Right,
+            Some("middle") => MouseButton::Middle,
+            _ => MouseButton::Left,
+        };
+
+        match self.ipc_client.double_click(x, y, mouse_button).await {
+            Ok(()) => json!({
+                "success": true,
+                "message": format!("Double clicked at ({}, {})", x, y)
+            })
+            .to_string(),
+            Err(e) => json!({
+                "error": "double_click_error",
+                "message": format!("Failed to double click: {}", e)
+            })
+            .to_string(),
+        }
+    }
 }
 
 #[tool_handler]
@@ -593,8 +726,11 @@ impl ServerHandler for EguiMcpServer {
                  'click_element' to click an element by ID (AT-SPI), \
                  'set_text' to input text into a text field by ID (AT-SPI), \
                  'click_at' to click at specific coordinates (IPC), \
+                 'double_click' to double click at specific coordinates (IPC), \
                  'keyboard_input' to send keyboard input (IPC), \
-                 'scroll' to scroll at specific coordinates (IPC), and \
+                 'scroll' to scroll at specific coordinates (IPC), \
+                 'hover' to move mouse to specific coordinates (IPC), \
+                 'drag' to drag from one point to another (IPC), and \
                  'take_screenshot' to capture the current UI (IPC)."
                     .into(),
             ),

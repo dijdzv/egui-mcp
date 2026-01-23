@@ -2,13 +2,15 @@
 //!
 //! This app demonstrates integration with egui-mcp-client for:
 //! - Screenshots
-//! - (Future) Coordinate-based input
+//! - Coordinate-based input (click, hover, drag)
+//! - Keyboard input
+//! - Scroll events
 //!
 //! Note: UI tree access is handled via AT-SPI on the server side
 //! and doesn't require any special code in the egui application.
 
 use eframe::egui;
-use egui_mcp_client::McpClient;
+use egui_mcp_client::{McpClient, MouseButton, PendingInput};
 use image::ImageEncoder;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
@@ -54,6 +56,13 @@ struct DemoApp {
     checkbox_value: bool,
     mcp_client: McpClient,
     runtime: Arc<Runtime>,
+    // Input state for visualization
+    last_mouse_pos: Option<(f32, f32)>,
+    last_click: Option<(f32, f32, String)>,
+    last_double_click: Option<(f32, f32, String)>,
+    last_drag: Option<((f32, f32), (f32, f32))>,
+    last_key: Option<String>,
+    last_scroll: Option<(f32, f32, f32, f32)>,
 }
 
 impl DemoApp {
@@ -67,6 +76,72 @@ impl DemoApp {
             checkbox_value: false,
             mcp_client,
             runtime,
+            last_mouse_pos: None,
+            last_click: None,
+            last_double_click: None,
+            last_drag: None,
+            last_key: None,
+            last_scroll: None,
+        }
+    }
+
+    /// Process pending MCP inputs and update state
+    fn process_pending_inputs(&mut self) {
+        let inputs = self.runtime.block_on(self.mcp_client.take_pending_inputs());
+        for input in inputs {
+            match input {
+                PendingInput::MoveMouse { x, y } => {
+                    self.last_mouse_pos = Some((x, y));
+                    tracing::info!("Mouse moved to ({}, {})", x, y);
+                }
+                PendingInput::Click { x, y, button } => {
+                    let button_name = match button {
+                        MouseButton::Left => "left",
+                        MouseButton::Right => "right",
+                        MouseButton::Middle => "middle",
+                    };
+                    self.last_click = Some((x, y, button_name.to_string()));
+                    tracing::info!("Click at ({}, {}) with {} button", x, y, button_name);
+                }
+                PendingInput::DoubleClick { x, y, button } => {
+                    let button_name = match button {
+                        MouseButton::Left => "left",
+                        MouseButton::Right => "right",
+                        MouseButton::Middle => "middle",
+                    };
+                    self.last_double_click = Some((x, y, button_name.to_string()));
+                    tracing::info!("Double click at ({}, {}) with {} button", x, y, button_name);
+                }
+                PendingInput::Drag {
+                    start_x,
+                    start_y,
+                    end_x,
+                    end_y,
+                    button: _,
+                } => {
+                    self.last_drag = Some(((start_x, start_y), (end_x, end_y)));
+                    tracing::info!(
+                        "Drag from ({}, {}) to ({}, {})",
+                        start_x,
+                        start_y,
+                        end_x,
+                        end_y
+                    );
+                }
+                PendingInput::Keyboard { key } => {
+                    self.last_key = Some(key.clone());
+                    tracing::info!("Key pressed: {}", key);
+                }
+                PendingInput::Scroll {
+                    x,
+                    y,
+                    delta_x,
+                    delta_y,
+                } => {
+                    self.last_scroll = Some((x, y, delta_x, delta_y));
+                    tracing::info!("Scroll at ({}, {}) delta ({}, {})", x, y, delta_x, delta_y);
+                }
+            }
         }
     }
 
@@ -97,6 +172,9 @@ impl DemoApp {
 
 impl eframe::App for DemoApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Process pending MCP inputs
+        self.process_pending_inputs();
+
         // Check if screenshot is requested and send viewport command
         let screenshot_requested = self
             .runtime
@@ -157,6 +235,66 @@ impl eframe::App for DemoApp {
                     &self.name
                 }
             ));
+
+            // MCP Input Visualization Section
+            ui.separator();
+            ui.heading("MCP Input Monitor");
+
+            egui::Grid::new("mcp_input_grid")
+                .num_columns(2)
+                .spacing([20.0, 4.0])
+                .show(ui, |ui| {
+                    ui.label("Mouse Position:");
+                    if let Some((x, y)) = self.last_mouse_pos {
+                        ui.label(format!("({:.1}, {:.1})", x, y));
+                    } else {
+                        ui.label("-");
+                    }
+                    ui.end_row();
+
+                    ui.label("Last Click:");
+                    if let Some((x, y, button)) = &self.last_click {
+                        ui.label(format!("({:.1}, {:.1}) [{}]", x, y, button));
+                    } else {
+                        ui.label("-");
+                    }
+                    ui.end_row();
+
+                    ui.label("Last Double Click:");
+                    if let Some((x, y, button)) = &self.last_double_click {
+                        ui.label(format!("({:.1}, {:.1}) [{}]", x, y, button));
+                    } else {
+                        ui.label("-");
+                    }
+                    ui.end_row();
+
+                    ui.label("Last Drag:");
+                    if let Some(((sx, sy), (ex, ey))) = self.last_drag {
+                        ui.label(format!("({:.1}, {:.1}) → ({:.1}, {:.1})", sx, sy, ex, ey));
+                    } else {
+                        ui.label("-");
+                    }
+                    ui.end_row();
+
+                    ui.label("Last Key:");
+                    if let Some(key) = &self.last_key {
+                        ui.label(format!("'{}'", key));
+                    } else {
+                        ui.label("-");
+                    }
+                    ui.end_row();
+
+                    ui.label("Last Scroll:");
+                    if let Some((x, y, dx, dy)) = self.last_scroll {
+                        ui.label(format!(
+                            "at ({:.1}, {:.1}) delta ({:.1}, {:.1})",
+                            x, y, dx, dy
+                        ));
+                    } else {
+                        ui.label("-");
+                    }
+                    ui.end_row();
+                });
         });
     }
 }

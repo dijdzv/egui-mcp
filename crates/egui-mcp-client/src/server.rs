@@ -163,6 +163,17 @@ impl IpcServer {
                     .await;
                 Response::Success
             }
+
+            Request::DoubleClick { x, y, button } => {
+                client
+                    .queue_input(PendingInput::DoubleClick {
+                        x: *x,
+                        y: *y,
+                        button: *button,
+                    })
+                    .await;
+                Response::Success
+            }
         }
     }
 }

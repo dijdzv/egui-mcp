@@ -130,6 +130,16 @@ pub enum Request {
         /// Mouse button to use
         button: MouseButton,
     },
+
+    /// Double click at specific screen coordinates
+    DoubleClick {
+        /// X coordinate (relative to window)
+        x: f32,
+        /// Y coordinate (relative to window)
+        y: f32,
+        /// Mouse button to click
+        button: MouseButton,
+    },
 }
 
 /// Response types for IPC communication
