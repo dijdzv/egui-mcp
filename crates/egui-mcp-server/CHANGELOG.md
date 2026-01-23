@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.2](https://github.com/dijdzv/egui-mcp/compare/egui-mcp-server-v0.0.1...egui-mcp-server-v0.0.2) - 2026-01-23
+
+### Other
+
+- release v0.0.1 ([#5](https://github.com/dijdzv/egui-mcp/pull/5))
+
 ## [0.0.1](https://github.com/dijdzv/egui-mcp/compare/egui-mcp-server-v0.0.0...egui-mcp-server-v0.0.1) - 2026-01-23
 
 ### Other
