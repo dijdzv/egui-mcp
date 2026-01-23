@@ -1,6 +1,6 @@
 [workspace]
-# Skip release commits to avoid infinite loop
-release_commits = "^(?!chore: release)"
+# Only include meaningful commits for release (excludes chore/ci/docs/style)
+release_commits = "^(feat|fix|perf|refactor|test).*"
 # Create a single release PR for the entire workspace
 pr_draft = false
 # Generate changelog
