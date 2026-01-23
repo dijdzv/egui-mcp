@@ -20,6 +20,10 @@ tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 schemars = { workspace = true }
 
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/{ name }-v{ version }/{ name }-v{ version }-{ target }{ archive-suffix }"
+pkg-fmt = "tgz"
+
 # AT-SPI for Linux accessibility
 [target.'cfg(target_os = "linux")'.dependencies]
 atspi-connection = { version = "0.9", features = ["async-std"] }
