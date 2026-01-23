@@ -836,7 +836,7 @@ dependencies = [
 
 [[package]]
 name = "demo-app"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "eframe",
  "egui",
@@ -975,7 +975,7 @@ dependencies = [
 
 [[package]]
 name = "egui-mcp-client"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "base64",
  "egui-mcp-protocol",
@@ -985,7 +985,7 @@ dependencies = [
 
 [[package]]
 name = "egui-mcp-protocol"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "accesskit",
  "serde",
@@ -996,7 +996,7 @@ dependencies = [
 
 [[package]]
 name = "egui-mcp-server"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "async-std",
