@@ -47,5 +47,5 @@ base64 = "0.22"
 schemars = "0.8"
 
 # Internal crates
-egui-mcp-protocol = { path = "crates/egui-mcp-protocol" }
-egui-mcp-client = { path = "crates/egui-mcp-client" }
+egui-mcp-protocol = { path = "crates/egui-mcp-protocol", version = "0.0.0" }
+egui-mcp-client = { path = "crates/egui-mcp-client", version = "0.0.0" }
