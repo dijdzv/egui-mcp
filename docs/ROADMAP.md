@@ -99,6 +99,43 @@ Enhanced text handling beyond EditableText.
 
 ---
 
+## Known Limitations (egui)
+
+The following AT-SPI interfaces are **fully implemented in AccessKit** but **not working** because egui does not provide the required data to AccessKit:
+
+| Interface | Tools Affected | Missing in egui |
+|-----------|---------------|-----------------|
+| Component | `get_bounds`, `focus_element`, `scroll_to_element`, `drag_element` | `raw_bounds` not exposed |
+| Value | `get_value`, `set_value` | `numeric_value` not exposed for sliders |
+| Selection | `select_item`, `deselect_item`, `get_selected_count`, `select_all`, `clear_selection` | Containers not marked as having selectable children |
+| Text | `get_text`, `get_text_selection`, `set_text_selection`, `get_caret_position`, `set_caret_position` | `supports_text_ranges()` returns false |
+
+### Possible Solutions
+
+1. **egui PR** - Add the missing AccessKit properties to egui (recommended, root cause fix)
+2. **IPC Workaround** - Implement these features via IPC instead of AT-SPI (requires app-side cooperation)
+3. **Coordinate-based Alternatives** - Use existing IPC tools (`click_at`, `drag`, etc.) as workarounds
+
+### Related Code (AccessKit)
+
+From `accesskit_atspi_common/src/node.rs`:
+```rust
+fn supports_component(&self) -> bool {
+    self.0.raw_bounds().is_some() || self.is_root()
+}
+fn supports_value(&self) -> bool {
+    self.current_value().is_some()  // calls numeric_value()
+}
+fn supports_text(&self) -> bool {
+    self.0.supports_text_ranges()
+}
+fn supports_selection(&self) -> bool {
+    self.0.is_container_with_selectable_children()
+}
+```
+
+---
+
 ## Phase 7: Advanced Features (Future)
 
 ### Wait/Polling Operations

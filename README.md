@@ -8,7 +8,7 @@ egui-mcp provides UI automation capabilities for [egui](https://github.com/emilk
 
 ## Features
 
-### Implemented
+### Working Tools
 
 | Tool | Description | Method |
 |------|-------------|--------|
@@ -20,11 +20,39 @@ egui-mcp provides UI automation capabilities for [egui](https://github.com/emilk
 | `click_element` | Click element by ID | AT-SPI Action |
 | `set_text` | Input text to text fields | AT-SPI EditableText |
 | `click_at` | Click at coordinates | IPC |
+| `double_click` | Double click at coordinates | IPC |
+| `hover` | Move mouse to coordinates | IPC |
+| `drag` | Drag from point A to point B | IPC |
 | `keyboard_input` | Send keyboard input | IPC |
-| `scroll` | Scroll operation | IPC |
+| `scroll` | Scroll at coordinates | IPC |
 | `take_screenshot` | Capture application screenshot | IPC |
 | `ping` | Verify server is running | - |
 | `check_connection` | Check connection to egui app | IPC |
+
+### Not Working (egui Limitation)
+
+The following tools are implemented but **do not work** because egui does not provide the required data to AccessKit:
+
+| Tool | AT-SPI Interface | Issue |
+|------|------------------|-------|
+| `get_bounds` | Component | egui doesn't expose `raw_bounds` |
+| `focus_element` | Component | Same as above |
+| `scroll_to_element` | Component | Same as above |
+| `drag_element` | Component + IPC | Depends on `get_bounds` |
+| `get_value` | Value | egui doesn't expose `numeric_value` for sliders |
+| `set_value` | Value | Same as above |
+| `select_item` | Selection | egui doesn't mark containers as selectable |
+| `deselect_item` | Selection | Same as above |
+| `get_selected_count` | Selection | Same as above |
+| `select_all` | Selection | Same as above |
+| `clear_selection` | Selection | Same as above |
+| `get_text` | Text | egui doesn't expose text ranges |
+| `get_text_selection` | Text | Same as above |
+| `set_text_selection` | Text | Same as above |
+| `get_caret_position` | Text | Same as above |
+| `set_caret_position` | Text | Same as above |
+
+> **Note**: This is a limitation of egui's AccessKit integration, not AccessKit itself. AccessKit fully supports these AT-SPI interfaces, but egui doesn't populate the required properties. A future egui update or PR could enable these features.
 
 ## Architecture
 
@@ -130,19 +158,33 @@ Add the server to your MCP client's configuration. The format depends on your MC
 
 Once connected, the following MCP tools are available:
 
+**Connection & Info:**
 - **`ping`** - Check if server is running
 - **`check_connection`** - Verify connection to egui application
+
+**UI Tree (AT-SPI):**
 - **`get_ui_tree`** - Get complete UI structure as JSON
 - **`find_by_label`** - Find elements containing a label substring
 - **`find_by_label_exact`** - Find elements with exact label match
 - **`find_by_role`** - Find elements by role (Button, TextInput, CheckBox, etc.)
 - **`get_element`** - Get element details by ID
+
+**Element Interaction (AT-SPI):**
 - **`click_element`** - Click an element by ID (AT-SPI Action)
 - **`set_text`** - Set text content of a text input by ID (AT-SPI EditableText)
-- **`click_at`** - Click at specific coordinates (IPC)
-- **`keyboard_input`** - Send keyboard input (IPC)
-- **`scroll`** - Scroll at specific coordinates (IPC)
-- **`take_screenshot`** - Capture screenshot (IPC, returns base64 PNG)
+
+**Coordinate-based Input (IPC):**
+- **`click_at`** - Click at specific coordinates
+- **`double_click`** - Double click at specific coordinates
+- **`hover`** - Move mouse to specific coordinates
+- **`drag`** - Drag from point A to point B
+- **`keyboard_input`** - Send keyboard input
+- **`scroll`** - Scroll at specific coordinates
+
+**Screenshot (IPC):**
+- **`take_screenshot`** - Capture screenshot (returns ImageContent or saves to file)
+
+> See [Features](#features) for tools that are not working due to egui limitations.
 
 ## Development
 
