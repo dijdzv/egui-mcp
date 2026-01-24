@@ -33,8 +33,12 @@ nix + devenv + direnv を使用。プロジェクトディレクトリに `cd` �
 ### システム依存パッケージ (apt)
 
 ```bash
-sudo apt-get install -y libwayland-dev libxkbcommon-dev fonts-ipafont-gothic
+sudo apt-get install -y libwayland-dev libxkbcommon-dev fonts-ipafont-gothic accerciser
 ```
+
+- `libwayland-dev`, `libxkbcommon-dev`: egui/eframe ビルド用
+- `fonts-ipafont-gothic`: 日本語フォント
+- `accerciser`: AT-SPI デバッグツール（UI ツリーの確認用）
 
 ### Nix (devenv) が提供するもの
 
@@ -156,3 +160,15 @@ git commit -m "feat!: rename click_at to click_coordinates"
    - Git tag 作成
    - GitHub Release 作成
    - crates.io に publish
+
+## Upstream PRs to Watch
+
+以下の外部 PR がマージされると、このプロジェクトに影響がある。定期的に確認すること。
+
+### egui PR #7850: Update accesskit to 0.23.0
+
+- **URL**: https://github.com/emilk/egui/pull/7850
+- **状態**: DRAFT (2026-01-16 時点)
+- **影響**: マージされると `accesskit_winit` が 0.31.0 に更新され、`atspi 0.29` が使われる
+- **対応**: マージ後、`atspi_client.rs` の workaround (`*Proxy::builder()` 直接使用) を削除し、`Proxies::*()` API に戻せる
+- **詳細**: [docs/atspi-proxies-issue.md](docs/atspi-proxies-issue.md) 参照

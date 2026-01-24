@@ -3,7 +3,6 @@
 use atspi_common::{CoordType, ObjectRef, ScrollType};
 use atspi_connection::AccessibilityConnection;
 use atspi_proxies::accessible::{AccessibleProxy, ObjectRefExt};
-use atspi_proxies::proxy_ext::ProxyExt;
 use egui_mcp_protocol::{NodeInfo, Rect, UiTree};
 use std::thread;
 
@@ -327,6 +326,13 @@ pub struct AtspiClient {
     connection: AccessibilityConnection,
 }
 
+/// Extract the actual AT-SPI node ID from an ObjectRef path
+/// The path format is like "/org/a11y/atspi/accessible/0/4467407273966801439"
+/// We want to extract "4467407273966801439" as a u64
+fn extract_atspi_node_id(path: &str) -> Option<u64> {
+    path.rsplit('/').next().and_then(|s| s.parse().ok())
+}
+
 impl AtspiClient {
     /// Create a new AT-SPI client
     pub async fn new() -> Result<Self, BoxError> {
@@ -376,6 +382,7 @@ impl AtspiClient {
     }
 
     /// Find element info (destination and path) by ID within an application
+    /// The ID is the actual AT-SPI node ID extracted from the object path
     async fn find_element_path_by_id(
         &self,
         app_name: &str,
@@ -393,11 +400,9 @@ impl AtspiClient {
         // Get the root's children (typically the window)
         let children: Vec<ObjectRef> = app_proxy.get_children().await?;
 
-        for (idx, child_ref) in children.iter().enumerate() {
-            let window_id = idx as u64 + 1;
-
+        for child_ref in children.iter() {
             if let Some(path) =
-                Box::pin(self.find_path_in_tree(child_ref, window_id, target_id)).await?
+                Box::pin(self.find_path_in_tree_by_atspi_id(child_ref, target_id)).await?
             {
                 return Ok(Some(path));
             }
@@ -406,35 +411,28 @@ impl AtspiClient {
         Ok(None)
     }
 
-    /// Recursively search for element path by ID
-    async fn find_path_in_tree(
+    /// Recursively search for element path by actual AT-SPI node ID
+    async fn find_path_in_tree_by_atspi_id(
         &self,
         obj_ref: &ObjectRef,
-        node_id: u64,
         target_id: u64,
     ) -> Result<Option<(String, String)>, BoxError> {
-        if node_id == target_id {
-            return Ok(Some((obj_ref.name.to_string(), obj_ref.path.to_string())));
+        // Check if this node's path ends with the target ID
+        let path_str = obj_ref.path.to_string();
+        if extract_atspi_node_id(&path_str) == Some(target_id) {
+            return Ok(Some((obj_ref.name.to_string(), path_str)));
         }
 
         let proxy = obj_ref
             .as_accessible_proxy(self.connection.connection())
             .await?;
 
-        // Get children
+        // Get children and search recursively
         let children_refs: Vec<ObjectRef> = proxy.get_children().await.unwrap_or_default();
-        let base_id = node_id * 100;
 
-        for (idx, child_ref) in children_refs.iter().enumerate() {
-            let child_id = base_id + idx as u64 + 1;
-
-            // Depth limit
-            if child_id >= 1_000_000_000 {
-                continue;
-            }
-
+        for child_ref in children_refs.iter() {
             if let Some(found) =
-                Box::pin(self.find_path_in_tree(child_ref, child_id, target_id)).await?
+                Box::pin(self.find_path_in_tree_by_atspi_id(child_ref, target_id)).await?
             {
                 return Ok(Some(found));
             }
@@ -450,14 +448,13 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // Build ActionProxy directly (Proxies::action() has issues with interface conversion)
+        use atspi_proxies::action::ActionProxy;
+        let action_proxy = ActionProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
             .await?;
-
-        let mut proxies = proxy.proxies().await?;
-        let action_proxy = proxies.action()?;
 
         // Action index 0 is typically the default action (click for buttons)
         let result = action_proxy.do_action(0).await?;
@@ -471,14 +468,13 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // Build EditableTextProxy directly
+        use atspi_proxies::editable_text::EditableTextProxy;
+        let editable_text_proxy = EditableTextProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
             .await?;
-
-        let mut proxies = proxy.proxies().await?;
-        let editable_text_proxy = proxies.editable_text()?;
 
         let result = editable_text_proxy.set_text_contents(text).await?;
         Ok(result)
@@ -495,17 +491,21 @@ impl AtspiClient {
         // Get the root's children (typically the window)
         let children: Vec<ObjectRef> = root_proxy.get_children().await?;
 
-        for (idx, child_ref) in children.iter().enumerate() {
+        for child_ref in children.iter() {
             let window_proxy: AccessibleProxy<'_> = child_ref
                 .as_accessible_proxy(self.connection.connection())
                 .await?;
 
-            // Use a simple incrementing ID scheme
-            let window_id = idx as u64 + 1;
+            // Use the actual AT-SPI node ID from the object path
+            let window_id = extract_atspi_node_id(&child_ref.path.to_string()).unwrap_or(1);
             roots.push(window_id);
 
-            self.traverse_tree(&window_proxy, window_id, &mut nodes)
-                .await?;
+            self.traverse_tree_with_atspi_ids(
+                &window_proxy,
+                &child_ref.path.to_string(),
+                &mut nodes,
+            )
+            .await?;
         }
 
         if nodes.is_empty() {
@@ -515,13 +515,16 @@ impl AtspiClient {
         Ok(Some(UiTree { nodes, roots }))
     }
 
-    /// Recursively traverse the accessibility tree
-    async fn traverse_tree(
+    /// Recursively traverse the accessibility tree using actual AT-SPI node IDs
+    async fn traverse_tree_with_atspi_ids(
         &self,
         proxy: &AccessibleProxy<'_>,
-        node_id: u64,
+        path: &str,
         nodes: &mut Vec<NodeInfo>,
     ) -> Result<(), BoxError> {
+        // Extract the actual AT-SPI node ID from the path
+        let node_id = extract_atspi_node_id(path).unwrap_or(0);
+
         // Get node information
         let name: String = proxy.name().await.unwrap_or_default();
         let description: String = proxy.description().await.unwrap_or_default();
@@ -554,20 +557,18 @@ impl AtspiClient {
         let children_refs: Vec<ObjectRef> = proxy.get_children().await.unwrap_or_default();
         let mut child_ids: Vec<u64> = Vec::new();
 
-        // Generate IDs for children
-        let base_id = node_id * 100;
-        for (idx, child_ref) in children_refs.iter().enumerate() {
-            let child_id = base_id + idx as u64 + 1;
+        // Process children using their actual AT-SPI IDs
+        for child_ref in children_refs.iter() {
+            let child_path = child_ref.path.to_string();
+            let child_id = extract_atspi_node_id(&child_path).unwrap_or(0);
             child_ids.push(child_id);
 
             let child_proxy: AccessibleProxy<'_> = child_ref
                 .as_accessible_proxy(self.connection.connection())
                 .await?;
 
-            // Recursive traversal with depth limit (to avoid infinite loops)
-            if child_id < 1_000_000_000 {
-                Box::pin(self.traverse_tree(&child_proxy, child_id, nodes)).await?;
-            }
+            // Recursive traversal
+            Box::pin(self.traverse_tree_with_atspi_ids(&child_proxy, &child_path, nodes)).await?;
         }
 
         // Determine label based on role and name
@@ -659,26 +660,22 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // Build ComponentProxy directly
+        use atspi_proxies::component::ComponentProxy;
+        let component_proxy = ComponentProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
             .await?;
 
-        let mut proxies = proxy.proxies().await?;
-        match proxies.component() {
-            Ok(component_proxy) => {
-                // Use Window coordinates (relative to the window)
-                let (x, y, width, height) = component_proxy.get_extents(CoordType::Window).await?;
-                Ok(Some(Rect {
-                    x: x as f32,
-                    y: y as f32,
-                    width: width as f32,
-                    height: height as f32,
-                }))
-            }
-            Err(_) => Ok(None), // Component interface not available
-        }
+        // Use Window coordinates (relative to the window)
+        let (x, y, width, height) = component_proxy.get_extents(CoordType::Window).await?;
+        Ok(Some(Rect {
+            x: x as f32,
+            y: y as f32,
+            width: width as f32,
+            height: height as f32,
+        }))
     }
 
     /// Focus an element using AT-SPI Component interface
@@ -688,20 +685,16 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // Build ComponentProxy directly
+        use atspi_proxies::component::ComponentProxy;
+        let component_proxy = ComponentProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
             .await?;
 
-        let mut proxies = proxy.proxies().await?;
-        match proxies.component() {
-            Ok(component_proxy) => {
-                let result = component_proxy.grab_focus().await?;
-                Ok(result)
-            }
-            Err(e) => Err(format!("Component interface not available: {}", e).into()),
-        }
+        let result = component_proxy.grab_focus().await?;
+        Ok(result)
     }
 
     /// Scroll element into view using AT-SPI Component interface
@@ -711,21 +704,17 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // Build ComponentProxy directly
+        use atspi_proxies::component::ComponentProxy;
+        let component_proxy = ComponentProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
             .await?;
 
-        let mut proxies = proxy.proxies().await?;
-        match proxies.component() {
-            Ok(component_proxy) => {
-                // ScrollType::Anywhere - scroll to make element visible anywhere in view
-                let result = component_proxy.scroll_to(ScrollType::Anywhere).await?;
-                Ok(result)
-            }
-            Err(e) => Err(format!("Component interface not available: {}", e).into()),
-        }
+        // ScrollType::Anywhere - scroll to make element visible anywhere in view
+        let result = component_proxy.scroll_to(ScrollType::Anywhere).await?;
+        Ok(result)
     }
 
     // ========================================================================
@@ -739,28 +728,25 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // Build ValueProxy directly (Proxies::value() has issues with interface conversion)
+        use atspi_proxies::value::ValueProxy;
+        let value_proxy = ValueProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
             .await?;
 
-        let mut proxies = proxy.proxies().await?;
-        match proxies.value() {
-            Ok(value_proxy) => {
-                let current = value_proxy.current_value().await?;
-                let minimum = value_proxy.minimum_value().await?;
-                let maximum = value_proxy.maximum_value().await?;
-                let increment = value_proxy.minimum_increment().await?;
-                Ok(Some(ValueInfo {
-                    current,
-                    minimum,
-                    maximum,
-                    increment,
-                }))
-            }
-            Err(_) => Ok(None), // Value interface not available
-        }
+        let current = value_proxy.current_value().await?;
+        let minimum = value_proxy.minimum_value().await?;
+        let maximum = value_proxy.maximum_value().await?;
+        let increment = value_proxy.minimum_increment().await?;
+
+        Ok(Some(ValueInfo {
+            current,
+            minimum,
+            maximum,
+            increment,
+        }))
     }
 
     /// Set value using AT-SPI Value interface
@@ -770,20 +756,16 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // Build ValueProxy directly (Proxies::value() has issues with interface conversion)
+        use atspi_proxies::value::ValueProxy;
+        let value_proxy = ValueProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
             .await?;
 
-        let mut proxies = proxy.proxies().await?;
-        match proxies.value() {
-            Ok(value_proxy) => {
-                value_proxy.set_current_value(value).await?;
-                Ok(true)
-            }
-            Err(e) => Err(format!("Value interface not available: {}", e).into()),
-        }
+        value_proxy.set_current_value(value).await?;
+        Ok(true)
     }
 
     // ========================================================================
@@ -797,20 +779,16 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // Build SelectionProxy directly (Proxies::selection() has issues with interface conversion)
+        use atspi_proxies::selection::SelectionProxy;
+        let selection_proxy = SelectionProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
             .await?;
 
-        let mut proxies = proxy.proxies().await?;
-        match proxies.selection() {
-            Ok(selection_proxy) => {
-                let result = selection_proxy.select_child(index).await?;
-                Ok(result)
-            }
-            Err(e) => Err(format!("Selection interface not available: {}", e).into()),
-        }
+        let result = selection_proxy.select_child(index).await?;
+        Ok(result)
     }
 
     /// Deselect an item by index using AT-SPI Selection interface
@@ -825,43 +803,56 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // Build SelectionProxy directly (Proxies::selection() has issues with interface conversion)
+        use atspi_proxies::selection::SelectionProxy;
+        let selection_proxy = SelectionProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
             .await?;
 
-        let mut proxies = proxy.proxies().await?;
-        match proxies.selection() {
-            Ok(selection_proxy) => {
-                let result = selection_proxy.deselect_child(index).await?;
-                Ok(result)
-            }
-            Err(e) => Err(format!("Selection interface not available: {}", e).into()),
-        }
+        let result = selection_proxy.deselect_child(index).await?;
+        Ok(result)
     }
 
     /// Get count of selected items using AT-SPI Selection interface
+    ///
+    /// For ComboBox, this checks if there's a selected value (name property).
+    /// For other containers, it uses the Selection interface's nselected_children().
     pub async fn get_selected_count(&self, app_name: &str, id: u64) -> Result<i32, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // First, check the role to handle ComboBox specially
+        let accessible_proxy = AccessibleProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
             .await?;
 
-        let mut proxies = proxy.proxies().await?;
-        match proxies.selection() {
-            Ok(selection_proxy) => {
-                let count = selection_proxy.nselected_children().await?;
-                Ok(count)
-            }
-            Err(e) => Err(format!("Selection interface not available: {}", e).into()),
+        let role = accessible_proxy.get_role().await.ok();
+
+        // ComboBox: check if there's a selected value (stored in name property)
+        if let Some(role) = role
+            && role == atspi_common::Role::ComboBox
+        {
+            let name: String = accessible_proxy.name().await.unwrap_or_default();
+            // If name is not empty, something is selected
+            return Ok(if name.is_empty() { 0 } else { 1 });
         }
+
+        // For other containers, use the Selection interface
+        use atspi_proxies::selection::SelectionProxy;
+        let selection_proxy = SelectionProxy::builder(self.connection.connection())
+            .destination(destination.as_str())?
+            .path(path.as_str())?
+            .build()
+            .await?;
+
+        let count = selection_proxy.nselected_children().await?;
+        Ok(count)
     }
 
     /// Select all items using AT-SPI Selection interface
@@ -871,20 +862,16 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // Build SelectionProxy directly (Proxies::selection() has issues with interface conversion)
+        use atspi_proxies::selection::SelectionProxy;
+        let selection_proxy = SelectionProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
             .await?;
 
-        let mut proxies = proxy.proxies().await?;
-        match proxies.selection() {
-            Ok(selection_proxy) => {
-                let result = selection_proxy.select_all().await?;
-                Ok(result)
-            }
-            Err(e) => Err(format!("Selection interface not available: {}", e).into()),
-        }
+        let result = selection_proxy.select_all().await?;
+        Ok(result)
     }
 
     /// Clear all selections using AT-SPI Selection interface
@@ -894,20 +881,16 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // Build SelectionProxy directly (Proxies::selection() has issues with interface conversion)
+        use atspi_proxies::selection::SelectionProxy;
+        let selection_proxy = SelectionProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
             .await?;
 
-        let mut proxies = proxy.proxies().await?;
-        match proxies.selection() {
-            Ok(selection_proxy) => {
-                let result = selection_proxy.clear_selection().await?;
-                Ok(result)
-            }
-            Err(e) => Err(format!("Selection interface not available: {}", e).into()),
-        }
+        let result = selection_proxy.clear_selection().await?;
+        Ok(result)
     }
 
     // ========================================================================
@@ -921,26 +904,26 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // Build TextProxy directly (Proxies::text() has issues with interface conversion)
+        use atspi_proxies::text::TextProxy;
+        let text_proxy = match TextProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
-            .await?;
+            .await
+        {
+            Ok(proxy) => proxy,
+            Err(_) => return Ok(None), // Text interface not available
+        };
 
-        let mut proxies = proxy.proxies().await?;
-        match proxies.text() {
-            Ok(text_proxy) => {
-                let length = text_proxy.character_count().await?;
-                let text = text_proxy.get_text(0, length).await?;
-                let caret_offset = text_proxy.caret_offset().await?;
-                Ok(Some(TextInfo {
-                    text,
-                    length,
-                    caret_offset,
-                }))
-            }
-            Err(_) => Ok(None), // Text interface not available
-        }
+        let length = text_proxy.character_count().await?;
+        let text = text_proxy.get_text(0, length).await?;
+        let caret_offset = text_proxy.caret_offset().await?;
+        Ok(Some(TextInfo {
+            text,
+            length,
+            caret_offset,
+        }))
     }
 
     /// Get text selection using AT-SPI Text interface
@@ -954,24 +937,31 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // Build TextProxy directly (Proxies::text() has issues with interface conversion)
+        use atspi_proxies::text::TextProxy;
+        let text_proxy = match TextProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
-            .await?;
+            .await
+        {
+            Ok(proxy) => proxy,
+            Err(_) => return Ok(None), // Text interface not available
+        };
 
-        let mut proxies = proxy.proxies().await?;
-        match proxies.text() {
-            Ok(text_proxy) => {
-                let n_selections = text_proxy.get_nselections().await?;
-                if n_selections > 0 {
-                    let (start, end) = text_proxy.get_selection(0).await?;
-                    Ok(Some(TextSelection { start, end }))
-                } else {
-                    Ok(None)
-                }
-            }
-            Err(_) => Ok(None), // Text interface not available
+        // Note: atspi-proxies has a bug where it calls "GetNselections" instead of "GetNSelections"
+        // (case mismatch). We use call_method directly with the correct method name.
+        let n_selections: i32 = text_proxy
+            .inner()
+            .call_method("GetNSelections", &())
+            .await?
+            .body()
+            .deserialize()?;
+        if n_selections > 0 {
+            let (start, end) = text_proxy.get_selection(0).await?;
+            Ok(Some(TextSelection { start, end }))
+        } else {
+            Ok(None)
         }
     }
 
@@ -988,26 +978,28 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // Build TextProxy directly (Proxies::text() has issues with interface conversion)
+        use atspi_proxies::text::TextProxy;
+        let text_proxy = TextProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
             .await?;
 
-        let mut proxies = proxy.proxies().await?;
-        match proxies.text() {
-            Ok(text_proxy) => {
-                // Try to add a new selection or modify existing one
-                let n_selections = text_proxy.get_nselections().await?;
-                if n_selections > 0 {
-                    let result = text_proxy.set_selection(0, start, end).await?;
-                    Ok(result)
-                } else {
-                    let result = text_proxy.add_selection(start, end).await?;
-                    Ok(result)
-                }
-            }
-            Err(e) => Err(format!("Text interface not available: {}", e).into()),
+        // Try to add a new selection or modify existing one
+        // Note: atspi-proxies has a bug where it calls "GetNselections" instead of "GetNSelections"
+        let n_selections: i32 = text_proxy
+            .inner()
+            .call_method("GetNSelections", &())
+            .await?
+            .body()
+            .deserialize()?;
+        if n_selections > 0 {
+            let result = text_proxy.set_selection(0, start, end).await?;
+            Ok(result)
+        } else {
+            let result = text_proxy.add_selection(start, end).await?;
+            Ok(result)
         }
     }
 
@@ -1018,20 +1010,16 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // Build TextProxy directly (Proxies::text() has issues with interface conversion)
+        use atspi_proxies::text::TextProxy;
+        let text_proxy = TextProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
             .await?;
 
-        let mut proxies = proxy.proxies().await?;
-        match proxies.text() {
-            Ok(text_proxy) => {
-                let offset = text_proxy.caret_offset().await?;
-                Ok(offset)
-            }
-            Err(e) => Err(format!("Text interface not available: {}", e).into()),
-        }
+        let offset = text_proxy.caret_offset().await?;
+        Ok(offset)
     }
 
     /// Set caret position using AT-SPI Text interface
@@ -1046,19 +1034,15 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        let proxy: AccessibleProxy<'_> = AccessibleProxy::builder(self.connection.connection())
+        // Build TextProxy directly (Proxies::text() has issues with interface conversion)
+        use atspi_proxies::text::TextProxy;
+        let text_proxy = TextProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
             .await?;
 
-        let mut proxies = proxy.proxies().await?;
-        match proxies.text() {
-            Ok(text_proxy) => {
-                let result = text_proxy.set_caret_offset(offset).await?;
-                Ok(result)
-            }
-            Err(e) => Err(format!("Text interface not available: {}", e).into()),
-        }
+        let result = text_proxy.set_caret_offset(offset).await?;
+        Ok(result)
     }
 }

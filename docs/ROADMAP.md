@@ -99,22 +99,44 @@ Enhanced text handling beyond EditableText.
 
 ---
 
-## Known Limitations (egui)
+## Known Limitations
 
-The following AT-SPI interfaces are **fully implemented in AccessKit** but **not working** because egui does not provide the required data to AccessKit:
+### Working Interfaces
 
-| Interface | Tools Affected | Missing in egui |
-|-----------|---------------|-----------------|
-| Component | `get_bounds`, `focus_element`, `scroll_to_element`, `drag_element` | `raw_bounds` not exposed |
-| Value | `get_value`, `set_value` | `numeric_value` not exposed for sliders |
-| Selection | `select_item`, `deselect_item`, `get_selected_count`, `select_all`, `clear_selection` | Containers not marked as having selectable children |
-| Text | `get_text`, `get_text_selection`, `set_text_selection`, `get_caret_position`, `set_caret_position` | `supports_text_ranges()` returns false |
+The following AT-SPI interfaces are now working:
 
-### Possible Solutions
+| Interface | Tools | Status | Notes |
+|-----------|-------|--------|-------|
+| Action | `click_element` | ✅ Working | |
+| Component | `get_bounds`, `focus_element`, `scroll_to_element`, `drag_element` | ✅ Working | |
+| Text (read) | `get_text`, `get_caret_position` | ✅ Working | Read-only operations |
+| Text (selection) | `get_text_selection`, `set_text_selection` | ✅ Working | atspi-proxies workaround (see below) |
+| Value | `get_value`, `set_value` | ✅ Working | Requires egui fork with `set_numeric_value()` fix |
+| Selection (partial) | `get_selected_count` | ✅ Working | ComboBox uses name property |
 
-1. **egui PR** - Add the missing AccessKit properties to egui (recommended, root cause fix)
-2. **IPC Workaround** - Implement these features via IPC instead of AT-SPI (requires app-side cooperation)
-3. **Coordinate-based Alternatives** - Use existing IPC tools (`click_at`, `drag`, etc.) as workarounds
+### Not Working (Limitation)
+
+| Interface | Tools Affected | Issue | Workaround |
+|-----------|---------------|-------|------------|
+| EditableText | `set_text` | AccessKit doesn't implement EditableText interface | IPC `keyboard_input` |
+| Selection | `select_item`, `deselect_item` | egui ComboBox items not registered as children | IPC `click_at` + `keyboard_input` |
+| Text | `set_caret_position` | egui doesn't handle SetTextSelection action | IPC `click_at` |
+
+### Not Needed
+
+| Tools | Reason |
+|-------|--------|
+| `select_all`, `clear_selection` | egui only has ComboBox and RadioGroup (single selection) |
+
+> **Note**: See [egui-accessibility-pr.md](egui-accessibility-pr.md) for detailed analysis of each limitation.
+
+### Workarounds and Future Fixes
+
+1. **Text Selection**: Currently uses D-Bus method call workaround for atspi-proxies 0.9.0 bug (method name case mismatch). This workaround will become unnecessary when [egui PR #7850](https://github.com/emilk/egui/pull/7850) merges (updates atspi to 0.28.0).
+
+2. **EditableText**: AT-SPI `Action.DoAction(index)` cannot pass arguments, so AccessKit's `ReplaceSelectedText` cannot be invoked via AT-SPI. Use IPC-based `keyboard_input` as the working alternative.
+
+3. **Selection (ComboBox)**: egui's ComboBox popup architecture puts items in a separate window, not as children of the ComboBox. `get_selected_count` works by checking the ComboBox's name property. For selecting items, use IPC-based `click_at` + `keyboard_input`.
 
 ### Related Code (AccessKit)
 

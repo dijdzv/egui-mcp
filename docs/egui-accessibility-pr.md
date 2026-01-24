@@ -1,6 +1,6 @@
 # egui Accessibility Improvements for AT-SPI
 
-This document describes missing AccessKit properties in egui that prevent AT-SPI interfaces from working correctly on Linux.
+This document describes AT-SPI accessibility issues in egui and tracks our fixes in the fork.
 
 ## Background
 
@@ -9,206 +9,212 @@ egui uses [AccessKit](https://github.com/AccessKit/accesskit) to provide cross-p
 - macOS: NSAccessibility
 - Linux: AT-SPI2 via D-Bus
 
-While egui's AccessKit integration works well for basic operations (click, set_text), several AT-SPI interfaces are not functional because egui doesn't provide the required data to AccessKit.
+## Fork Repository
 
-## Issues Found
+- **URL**: https://github.com/dijdzv/egui
+- **Base**: egui 0.33.3 (`44cdd653`)
 
-### 1. Value Interface (Slider, DragValue)
+---
 
-**Symptom**: AT-SPI Value interface methods (`get_value`, `set_value`) fail with "Unknown property 'CurrentValue'"
+## Current Status
+
+| Interface | Tools | Status | Fix |
+|-----------|-------|--------|-----|
+| Action | `click_element` | ✅ Working | - |
+| Component | `get_bounds`, `focus_element`, `scroll_to_element` | ✅ Working | - |
+| Text (read) | `get_text`, `get_caret_position` | ✅ Working | - |
+| Text (selection) | `get_text_selection`, `set_text_selection` | ✅ Working | atspi-proxies workaround |
+| Text (write) | `set_caret_position` | ⛔ egui limitation | IPC `click_at` |
+| Value | `get_value`, `set_value` | ✅ Working | Fork commit `af1309a2` |
+| Selection (read) | `get_selected_count` | ✅ Working | ComboBox uses name property |
+| Selection (write) | `select_item`, `deselect_item` | ⛔ egui architecture | IPC `click_at` + `keyboard_input` |
+| Selection (bulk) | `select_all`, `clear_selection` | ➖ Not needed | egui only has single selection |
+| EditableText | `set_text` | ⛔ AccessKit limitation | IPC `keyboard_input` |
+
+---
+
+## Issue 1: Value Interface (Slider, DragValue) - FIXED
+
+**Symptom**: AT-SPI Value interface methods fail with "Unknown property 'CurrentValue'"
 
 **Root Cause**: `set_numeric_value()` is never called on the AccessKit builder.
-
-AccessKit's AT-SPI adapter checks `supports_value()` which requires `numeric_value` to be set:
 
 ```rust
 // accesskit_atspi_common/src/node.rs
 fn supports_value(&self) -> bool {
-    self.current_value().is_some()  // calls numeric_value()
+    self.current_value().is_some()  // requires numeric_value to be set
 }
 ```
 
-**Current Code** (`crates/egui/src/widgets/slider.rs`):
+**Fix** (commit `af1309a2`):
+
 ```rust
+// crates/egui/src/widgets/slider.rs
 builder.set_min_numeric_value(*self.range.start());
 builder.set_max_numeric_value(*self.range.end());
-// Missing: builder.set_numeric_value(current_value);
+builder.set_numeric_value(value);  // Added
+
+// crates/egui/src/widgets/drag_value.rs
+builder.set_numeric_value(value);  // Added
 ```
 
-**Fix Required**:
-
-In `slider.rs`, add after the min/max settings:
-```rust
-builder.set_numeric_value(get());
-```
-
-In `drag_value.rs`, add:
-```rust
-builder.set_numeric_value(value);
-```
+**Status**: ✅ Implemented and tested
+**Complexity**: Easy (one line per widget)
+**PR-ready**: Yes
 
 ---
 
-### 2. Component Interface (Bounds)
+## Issue 2: EditableText Interface - NOT FIXABLE IN EGUI
 
-**Symptom**: AT-SPI Component interface methods (`get_bounds`, `focus_element`, `scroll_to_element`) fail with "Unknown method 'GetExtents'"
+**Symptom**: `set_text` fails with "Unknown interface 'org.a11y.atspi.EditableText'"
 
-**Root Cause**: `fill_accesskit_node_common` calls `set_bounds()` correctly. However, the issue may be:
-1. Bounds are set in local coordinates but AT-SPI expects screen/window coordinates
-2. The transform is not being applied correctly
-3. Timing issue - bounds set after node is committed
+**Root Cause**: **AccessKit itself does not implement the AT-SPI EditableText interface**.
 
-AccessKit's AT-SPI adapter checks:
+### Investigation Results
+
+1. **AT-SPI EditableText Interface** (`atspi-proxies/editable_text.rs`):
+   - `SetTextContents(text)` - Replace entire text
+   - `InsertText(position, text, length)` - Insert text at position
+   - `DeleteText(start, end)` - Delete text range
+   - `CopyText`, `CutText`, `PasteText` - Clipboard operations
+
+2. **AccessKit Support**:
+   - `Action::ReplaceSelectedText` exists for text replacement
+   - **However**, `accesskit_atspi_common/src/node.rs` `interfaces()` method does NOT include `Interface::EditableText`
+   - The EditableText interface is never exposed via AT-SPI
+
+3. **Why AT-SPI Cannot Use AccessKit's Approach**:
+   - AT-SPI's `Action.DoAction(index)` method takes **no arguments** - it only accepts an action index
+   - AccessKit's `Action::ReplaceSelectedText` requires **data** (the replacement text)
+   - There is no way to pass the replacement text through AT-SPI's Action interface
+   - Therefore, even though AccessKit supports `ReplaceSelectedText`, it cannot be invoked via AT-SPI
+
+4. **Conclusion**:
+   - Fixing egui alone cannot enable EditableText
+   - AccessKit's AT-SPI adapter (`accesskit_atspi_common`) needs modification to implement `EditableText` interface
+   - This is **out of scope** for egui fork fixes
+
+**Status**: ❌ Cannot be fixed in egui (requires AccessKit changes)
+**Workaround**: Use IPC-based keyboard simulation (`click_at` + `keyboard_input`) - already implemented in egui-mcp-server
+
+---
+
+## Issue 3: Text Selection - FIXED (atspi-proxies bug)
+
+**Symptom**: `get_text_selection`, `set_text_selection` fail with "Unknown method 'GetNselections'"
+
+**Root Cause**: **Bug in atspi-proxies 0.9.0** - method name case mismatch.
+
+### Investigation Results
+
+1. **AT-SPI specification**: `GetNSelections` (capital S)
+2. **atspi-proxies**: `GetNselections` (lowercase s)
+3. **egui already implements Text Selection** via `set_text_selection()` in AccessKit
+
+### Fix
+
+In egui-mcp-server, we call D-Bus method directly with correct name:
+
+```rust
+// Instead of:
+let n_selections = text_proxy.get_nselections().await?;
+
+// We use:
+let n_selections: i32 = text_proxy
+    .inner()
+    .call_method("GetNSelections", &())
+    .await?
+    .body()
+    .deserialize()?;
+```
+
+**Status**: ✅ Fixed (in egui-mcp-server, not egui)
+**Complexity**: Easy
+
+### Future: Workaround Will Become Unnecessary
+
+This workaround will become unnecessary when egui merges [PR #7850](https://github.com/emilk/egui/pull/7850), which updates `atspi` from 0.25.0 to 0.28.0. The newer atspi-proxies version (0.10+) includes the fix for the method name case mismatch ([odilia-app/atspi#239](https://github.com/odilia-app/atspi/pull/239)).
+
+---
+
+## Issue 4: Selection Interface (ComboBox) - NOT FIXABLE IN EGUI (Architecture)
+
+**Symptom**: Selection methods fail because ComboBox has no child items visible to AT-SPI.
+
+### Investigation Results
+
+1. **Selection interface IS supported** by AccessKit
+2. **ComboBox DOES have Selection interface** (`['Accessible', 'Action', 'Component', 'Selection']`)
+3. **Problem**: ComboBox has 0 children in AT-SPI tree
+4. **`get_n_selected_children()` works** (returns 0)
+
+The real issue is egui's ComboBox popup architecture:
+- ComboBox items are in a separate popup window
+- Popup appears only when ComboBox is opened
+- Items are NOT registered as ComboBox children in AccessKit
+- egui's immediate mode GUI makes parent-child relationships difficult
+
 ```rust
 // accesskit_atspi_common/src/node.rs
-fn supports_component(&self) -> bool {
-    self.0.raw_bounds().is_some() || self.is_root()
-}
-
-// raw_bounds() simply returns the stored bounds:
-pub fn raw_bounds(&self) -> Option<Rect> {
-    self.data().bounds()
+pub fn select_child(&self, child_index: usize) -> Result<bool> {
+    // This requires filtered_children(filter).nth(child_index)
+    // But ComboBox has no children!
 }
 ```
 
-**Current Code** (`crates/egui/src/response.rs`):
-```rust
-builder.set_bounds(accesskit::Rect {
-    x0: self.rect.min.x.into(),
-    y0: self.rect.min.y.into(),
-    x1: self.rect.max.x.into(),
-    y1: self.rect.max.y.into(),
-});
-```
+### Required Changes (Complex)
 
-**Potential Issues**:
+To fix this properly, egui would need to:
+1. Register popup menu items as children of ComboBox
+2. Track selected state per item
+3. Handle the parent-child relationship across popup windows
 
-1. **Transform not set**: AccessKit may need `set_transform()` to convert local bounds to screen coordinates
-2. **Bounds in wrong coordinate space**: The rect might need to be in screen coordinates, not widget-local
-
-**Investigation Needed**:
-- Debug whether `bounds()` returns `Some` or `None` in the AccessKit tree
-- Check if `set_transform()` is being called on parent nodes
-- Verify coordinate system expectations
+**Status**: ❌ Cannot be easily fixed (requires architectural changes to egui)
+**Workaround**: Use IPC-based `click_at` + `keyboard_input` to interact with ComboBox
 
 ---
 
-### 3. Selection Interface (ComboBox)
+## Summary
 
-**Symptom**: AT-SPI Selection interface methods (`select_item`, `get_selected_count`, etc.) fail with "Unknown property 'NselectedChildren'"
-
-**Root Cause**: ComboBox has **no AccessKit integration** for selection.
-
-AccessKit's AT-SPI adapter checks:
-```rust
-// accesskit_atspi_common/src/node.rs
-fn supports_selection(&self) -> bool {
-    self.0.is_container_with_selectable_children()
-}
-```
-
-**Current Code** (`crates/egui/src/containers/combo_box.rs`):
-- No AccessKit code present
-- Only basic `WidgetInfo` with `WidgetType::ComboBox`
-
-**Fix Required**:
-
-Add AccessKit integration to ComboBox:
-```rust
-// In ComboBox show method, when building the popup:
-builder.set_children_selectable();  // or equivalent method
-
-// For each selectable item:
-item_builder.set_selected(is_selected);
-```
-
-Note: This may require significant refactoring as ComboBox currently doesn't track its items in a way that's compatible with AccessKit's selection model.
+| Issue | Complexity | Status | Upstream PR |
+|-------|------------|--------|-------------|
+| Value Interface | Easy | ✅ Fixed | Ready (egui fork) |
+| EditableText | N/A | ⛔ AccessKit limitation | N/A |
+| Text Selection | Easy | ✅ Fixed | N/A (atspi-proxies bug) |
+| Selection (read) | Easy | ✅ Fixed | N/A (egui-mcp-server) |
+| Selection (write) | Hard | ⛔ egui architecture | N/A |
 
 ---
-
-### 4. Text Interface (TextEdit)
-
-**Symptom**: AT-SPI Text interface methods (`get_text`, `get_caret_position`, `get_text_selection`) fail with "Unknown property 'CharacterCount'"
-
-**Root Cause**: `supports_text_ranges()` returns false because TextEdit doesn't create `Role::TextRun` child nodes.
-
-AccessKit's `supports_text_ranges()` requires **both** conditions:
-```rust
-// accesskit/consumer/src/text.rs
-pub fn supports_text_ranges(&self) -> bool {
-    (self.is_text_input()
-        || matches!(self.role(), Role::Label | Role::Document | Role::Terminal))
-        && self.text_runs().next().is_some()  // <-- Requires TextRun children!
-}
-```
-
-**Current Code** (`crates/egui/src/text_selection/accesskit_text.rs`):
-- Sets text-related properties on the TextEdit node itself
-- Does NOT create `Role::TextRun` child nodes for the text content
-
-**Fix Required**:
-
-egui needs to create child nodes with `Role::TextRun` for each text segment in the TextEdit:
-
-```rust
-// For each text run in the galley:
-let text_run_builder = NodeBuilder::new(Role::TextRun);
-text_run_builder.set_value(run_text);
-text_run_builder.set_character_lengths(...);
-text_run_builder.set_character_positions(...);
-// ... add as child of TextEdit node
-```
-
-This is a more significant change as it requires restructuring how text accessibility is handled.
-
----
-
-## Summary Table
-
-| AT-SPI Interface | Affected Tools | Root Cause | Fix Complexity |
-|------------------|----------------|------------|----------------|
-| Value | `get_value`, `set_value` | Missing `set_numeric_value()` in Slider/DragValue | **Easy** - Add one line |
-| Component | `get_bounds`, `focus_element`, `scroll_to_element` | Bounds set but possibly wrong coordinates or missing transform | **Medium** - Need debugging |
-| Selection | `select_item`, `deselect_item`, `get_selected_count`, `select_all`, `clear_selection` | ComboBox has no AccessKit integration | **Hard** - Major refactoring |
-| Text | `get_text`, `get_text_selection`, `set_text_selection`, `get_caret_position`, `set_caret_position` | Missing `Role::TextRun` child nodes | **Hard** - Restructure text accessibility |
-
-## Recommended Fix Order
-
-1. **Value Interface** (Easy Win)
-   - Add `set_numeric_value()` to Slider and DragValue
-   - Immediate benefit for screen readers and automation tools
-
-2. **Component Interface** (Debug First)
-   - Need to determine why bounds aren't exposed via AT-SPI
-   - May be a simple coordinate/transform fix
-
-3. **Text Interface** (Significant Work)
-   - Requires adding TextRun child nodes
-   - Consider if this is necessary for egui's use cases
-
-4. **Selection Interface** (Major Work)
-   - Requires rethinking ComboBox architecture
-   - May need to track items in accessibility tree
 
 ## Testing
 
-To verify fixes work correctly, use AT-SPI tools:
-
 ```bash
-# Install AT-SPI debugging tools
-sudo apt install accerciser at-spi2-core
+# Run demo app with fork
+just demo
 
-# Run Accerciser to inspect accessibility tree
+# Test AT-SPI tools via MCP
+# Or use Python:
+python3 -c "
+import gi
+gi.require_version('Atspi', '2.0')
+from gi.repository import Atspi
+
+desktop = Atspi.get_desktop(0)
+# Navigate to element and test
+"
+
+# Or use Accerciser
+sudo apt install accerciser
 accerciser
-
-# Or use command-line tools
-# List accessible applications
-busctl --user call org.a11y.atspi.Registry /org/a11y/atspi/accessible/root org.a11y.atspi.Accessible GetChildren
 ```
+
+---
 
 ## Related Links
 
 - [egui PR #2294 - Implement accessibility APIs via AccessKit](https://github.com/emilk/egui/pull/2294)
+- [egui PR #7850 - Update atspi to 0.28.0](https://github.com/emilk/egui/pull/7850) - Fixes atspi-proxies method name bug
 - [egui Issue #167 - Accessibility (A11y)](https://github.com/emilk/egui/issues/167)
 - [AccessKit Repository](https://github.com/AccessKit/accesskit)
 - [AT-SPI Documentation](https://www.freedesktop.org/wiki/Accessibility/AT-SPI2/)
+- [odilia-app/atspi#239 - ProxyExt fix](https://github.com/odilia-app/atspi/pull/239) - Fixes proxy conversion bug

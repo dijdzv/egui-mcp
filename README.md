@@ -18,7 +18,17 @@ egui-mcp provides UI automation capabilities for [egui](https://github.com/emilk
 | `find_by_role` | Search elements by role (Button, TextInput, etc.) | AT-SPI |
 | `get_element` | Get a specific element by ID | AT-SPI |
 | `click_element` | Click element by ID | AT-SPI Action |
-| `set_text` | Input text to text fields | AT-SPI EditableText |
+| `get_bounds` | Get element bounding box | AT-SPI Component |
+| `focus_element` | Focus element by ID | AT-SPI Component |
+| `scroll_to_element` | Scroll element into view | AT-SPI Component |
+| `drag_element` | Drag element to target | AT-SPI Component + IPC |
+| `get_text` | Get text content | AT-SPI Text |
+| `get_caret_position` | Get cursor position | AT-SPI Text |
+| `get_text_selection` | Get selected text range | AT-SPI Text |
+| `set_text_selection` | Set text selection | AT-SPI Text |
+| `get_value` | Get slider/progress value | AT-SPI Value * |
+| `set_value` | Set slider value | AT-SPI Value * |
+| `get_selected_count` | Get count of selected items | AT-SPI Selection ** |
 | `click_at` | Click at coordinates | IPC |
 | `double_click` | Double click at coordinates | IPC |
 | `hover` | Move mouse to coordinates | IPC |
@@ -29,30 +39,31 @@ egui-mcp provides UI automation capabilities for [egui](https://github.com/emilk
 | `ping` | Verify server is running | - |
 | `check_connection` | Check connection to egui app | IPC |
 
-### Not Working (egui Limitation)
+> \* Value interface requires [egui fork with `set_numeric_value()` fix](https://github.com/dijdzv/egui). See [docs/egui-accessibility-pr.md](docs/egui-accessibility-pr.md) for details.
+>
+> \*\* For ComboBox, checks the name property to determine if something is selected (returns 0 or 1).
 
-The following tools are implemented but **do not work** because egui does not provide the required data to AccessKit:
+### Not Working (Limitation)
 
-| Tool | AT-SPI Interface | Issue |
-|------|------------------|-------|
-| `get_bounds` | Component | egui doesn't expose `raw_bounds` |
-| `focus_element` | Component | Same as above |
-| `scroll_to_element` | Component | Same as above |
-| `drag_element` | Component + IPC | Depends on `get_bounds` |
-| `get_value` | Value | egui doesn't expose `numeric_value` for sliders |
-| `set_value` | Value | Same as above |
-| `select_item` | Selection | egui doesn't mark containers as selectable |
-| `deselect_item` | Selection | Same as above |
-| `get_selected_count` | Selection | Same as above |
-| `select_all` | Selection | Same as above |
-| `clear_selection` | Selection | Same as above |
-| `get_text` | Text | egui doesn't expose text ranges |
-| `get_text_selection` | Text | Same as above |
-| `set_text_selection` | Text | Same as above |
-| `get_caret_position` | Text | Same as above |
-| `set_caret_position` | Text | Same as above |
+The following tools are implemented but **do not work** due to various limitations:
 
-> **Note**: This is a limitation of egui's AccessKit integration, not AccessKit itself. AccessKit fully supports these AT-SPI interfaces, but egui doesn't populate the required properties. A future egui update or PR could enable these features.
+| Tool | AT-SPI Interface | Issue | Workaround |
+|------|------------------|-------|------------|
+| `set_text` | EditableText | AccessKit doesn't implement EditableText interface | Use `keyboard_input` |
+| `select_item` | Selection | egui ComboBox doesn't expose child items to AccessKit | Use `click_at` + `keyboard_input` |
+| `deselect_item` | Selection | Same as above | Same as above |
+| `set_caret_position` | Text | egui doesn't handle SetTextSelection action | Use `click_at` |
+
+### Not Needed
+
+The following tools are implemented but not useful for egui:
+
+| Tool | Reason |
+|------|--------|
+| `select_all` | egui only has ComboBox and RadioGroup (single selection) |
+| `clear_selection` | Same as above |
+
+> **Note**: See [docs/egui-accessibility-pr.md](docs/egui-accessibility-pr.md) for detailed analysis of each limitation.
 
 ## Architecture
 

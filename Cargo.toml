@@ -49,3 +49,9 @@ schemars = "0.8"
 # Internal crates
 egui-mcp-protocol = { path = "crates/egui-mcp-protocol", version = "0.0.1" }
 egui-mcp-client = { path = "crates/egui-mcp-client", version = "0.0.1" }
+
+# Patch egui with fork for accessibility fixes (AT-SPI Value interface)
+# See: docs/egui-accessibility-pr.md
+[patch.crates-io]
+egui = { git = "https://github.com/dijdzv/egui.git", branch = "fix/accessibility-at-spi" }
+eframe = { git = "https://github.com/dijdzv/egui.git", branch = "fix/accessibility-at-spi" }
