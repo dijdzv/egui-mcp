@@ -7,6 +7,7 @@ description = "Library to embed in egui apps for MCP integration"
 
 [dependencies]
 egui-mcp-protocol = { workspace = true }
+egui = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 base64 = { workspace = true }

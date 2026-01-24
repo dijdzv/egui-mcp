@@ -978,6 +978,7 @@ name = "egui-mcp-client"
 version = "0.0.1"
 dependencies = [
  "base64",
+ "egui",
  "egui-mcp-protocol",
  "tokio",
  "tracing",
@@ -1003,6 +1004,7 @@ dependencies = [
  "atspi-common",
  "atspi-connection",
  "atspi-proxies",
+ "base64",
  "egui-mcp-protocol",
  "rmcp",
  "schemars 0.8.22",

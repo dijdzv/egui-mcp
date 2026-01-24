@@ -16,7 +16,7 @@ use ipc_client::IpcClient;
 use rmcp::{
     ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{Implementation, ProtocolVersion, ServerCapabilities, ServerInfo},
+    model::{Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo},
     schemars, tool, tool_handler, tool_router,
     transport::stdio,
 };
@@ -82,6 +82,15 @@ struct ClickAtRequest {
     button: Option<String>,
 }
 
+/// Request for take_screenshot tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct TakeScreenshotRequest {
+    #[schemars(
+        description = "If true, save screenshot to a temp file and return the path. If false (default), return base64-encoded data."
+    )]
+    save_to_file: Option<bool>,
+}
+
 /// Request for keyboard_input tool
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct KeyboardInputRequest {
@@ -135,6 +144,149 @@ struct DoubleClickRequest {
     y: f32,
     #[schemars(description = "Mouse button: 'left', 'right', or 'middle' (default: 'left')")]
     button: Option<String>,
+}
+
+// ============================================================================
+// Priority 1 (remaining): drag_element
+// ============================================================================
+
+/// Request for drag_element tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct DragElementRequest {
+    #[schemars(description = "Node ID of the element to drag (as string)")]
+    source_id: String,
+    #[schemars(description = "Ending X coordinate")]
+    end_x: f32,
+    #[schemars(description = "Ending Y coordinate")]
+    end_y: f32,
+    #[schemars(description = "Mouse button: 'left', 'right', or 'middle' (default: 'left')")]
+    button: Option<String>,
+}
+
+// ============================================================================
+// Priority 2: Element Information (AT-SPI Component)
+// ============================================================================
+
+/// Request for get_bounds tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct GetBoundsRequest {
+    #[schemars(description = "Node ID of the element (as string)")]
+    id: String,
+}
+
+/// Request for focus_element tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct FocusElementRequest {
+    #[schemars(description = "Node ID of the element to focus (as string)")]
+    id: String,
+}
+
+/// Request for scroll_to_element tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ScrollToElementRequest {
+    #[schemars(description = "Node ID of the element to scroll into view (as string)")]
+    id: String,
+}
+
+// ============================================================================
+// Priority 3: Value Operations (AT-SPI Value)
+// ============================================================================
+
+/// Request for get_value tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct GetValueRequest {
+    #[schemars(description = "Node ID of the element (as string)")]
+    id: String,
+}
+
+/// Request for set_value tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct SetValueRequest {
+    #[schemars(description = "Node ID of the element (as string)")]
+    id: String,
+    #[schemars(description = "Value to set (number)")]
+    value: f64,
+}
+
+// ============================================================================
+// Priority 4: Selection Operations (AT-SPI Selection)
+// ============================================================================
+
+/// Request for select_item tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct SelectItemRequest {
+    #[schemars(description = "Node ID of the container element (as string)")]
+    id: String,
+    #[schemars(description = "Index of the item to select (0-based)")]
+    index: i32,
+}
+
+/// Request for deselect_item tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct DeselectItemRequest {
+    #[schemars(description = "Node ID of the container element (as string)")]
+    id: String,
+    #[schemars(description = "Index of the item to deselect (0-based)")]
+    index: i32,
+}
+
+/// Request for get_selected_count tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct GetSelectedCountRequest {
+    #[schemars(description = "Node ID of the container element (as string)")]
+    id: String,
+}
+
+/// Request for select_all/clear_selection tools
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct SelectionContainerRequest {
+    #[schemars(description = "Node ID of the container element (as string)")]
+    id: String,
+}
+
+// ============================================================================
+// Priority 5: Text Operations (AT-SPI Text)
+// ============================================================================
+
+/// Request for get_text tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct GetTextRequest {
+    #[schemars(description = "Node ID of the element (as string)")]
+    id: String,
+}
+
+/// Request for get_text_selection tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct GetTextSelectionRequest {
+    #[schemars(description = "Node ID of the element (as string)")]
+    id: String,
+}
+
+/// Request for set_text_selection tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct SetTextSelectionRequest {
+    #[schemars(description = "Node ID of the element (as string)")]
+    id: String,
+    #[schemars(description = "Start offset of the selection")]
+    start: i32,
+    #[schemars(description = "End offset of the selection")]
+    end: i32,
+}
+
+/// Request for get_caret_position tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct GetCaretPositionRequest {
+    #[schemars(description = "Node ID of the element (as string)")]
+    id: String,
+}
+
+/// Request for set_caret_position tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct SetCaretPositionRequest {
+    #[schemars(description = "Node ID of the element (as string)")]
+    id: String,
+    #[schemars(description = "Offset position for the caret")]
+    offset: i32,
 }
 
 /// egui-mcp server handler
@@ -492,26 +644,67 @@ impl EguiMcpServer {
     #[tool(
         description = "Take a screenshot of the egui application. Returns base64-encoded PNG image data."
     )]
-    async fn take_screenshot(&self) -> String {
+    async fn take_screenshot(
+        &self,
+        Parameters(TakeScreenshotRequest { save_to_file }): Parameters<TakeScreenshotRequest>,
+    ) -> Content {
         if !self.ipc_client.is_socket_available() {
-            return json!({
+            return Content::text(json!({
                 "error": "not_connected",
                 "message": "No egui application socket found. Make sure the egui app is running with egui-mcp-client."
-            }).to_string();
+            }).to_string());
         }
 
         match self.ipc_client.take_screenshot().await {
-            Ok((data, format)) => json!({
-                "format": format,
-                "data": data,
-                "encoding": "base64"
-            })
-            .to_string(),
-            Err(e) => json!({
-                "error": "screenshot_error",
-                "message": format!("Failed to take screenshot: {}", e)
-            })
-            .to_string(),
+            Ok((data, _format)) => {
+                if save_to_file.unwrap_or(false) {
+                    // Decode base64 and save to file
+                    use base64::Engine;
+                    match base64::engine::general_purpose::STANDARD.decode(&data) {
+                        Ok(png_bytes) => {
+                            let timestamp = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_millis())
+                                .unwrap_or(0);
+                            let file_path = format!("/tmp/egui-mcp-screenshot-{}.png", timestamp);
+
+                            match std::fs::write(&file_path, png_bytes.as_slice()) {
+                                Ok(()) => Content::text(
+                                    json!({
+                                        "file_path": file_path,
+                                        "size_bytes": png_bytes.len()
+                                    })
+                                    .to_string(),
+                                ),
+                                Err(e) => Content::text(
+                                    json!({
+                                        "error": "file_write_error",
+                                        "message": format!("Failed to write screenshot file: {}", e)
+                                    })
+                                    .to_string(),
+                                ),
+                            }
+                        }
+                        Err(e) => Content::text(
+                            json!({
+                                "error": "decode_error",
+                                "message": format!("Failed to decode base64 data: {}", e)
+                            })
+                            .to_string(),
+                        ),
+                    }
+                } else {
+                    // Return as MCP ImageContent (ideal for AI models)
+                    Content::image(data, "image/png")
+                }
+            }
+            Err(e) => Content::text(
+                json!({
+                    "error": "screenshot_error",
+                    "message": format!("Failed to take screenshot: {}", e)
+                })
+                .to_string(),
+            ),
         }
     }
 
@@ -707,6 +900,888 @@ impl EguiMcpServer {
             .to_string(),
         }
     }
+
+    // ========================================================================
+    // Priority 1 (remaining): drag_element
+    // ========================================================================
+
+    /// Drag an element to a target position (combines get_bounds + drag)
+    #[tool(
+        description = "Drag a UI element to a target position. Gets element center via AT-SPI and drags to target coordinates via IPC."
+    )]
+    async fn drag_element(
+        &self,
+        Parameters(DragElementRequest {
+            source_id,
+            end_x,
+            end_y,
+            button,
+        }): Parameters<DragElementRequest>,
+    ) -> String {
+        let id: u64 = match source_id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            // First, get the element bounds
+            match atspi_client::get_bounds_blocking("demo", id) {
+                Ok(Some(bounds)) => {
+                    // Calculate center of the element
+                    let start_x = bounds.x + bounds.width / 2.0;
+                    let start_y = bounds.y + bounds.height / 2.0;
+
+                    // Now perform the drag via IPC
+                    if !self.ipc_client.is_socket_available() {
+                        return json!({
+                            "error": "not_connected",
+                            "message": "No egui application socket found."
+                        })
+                        .to_string();
+                    }
+
+                    let mouse_button = match button.as_deref() {
+                        Some("right") => MouseButton::Right,
+                        Some("middle") => MouseButton::Middle,
+                        _ => MouseButton::Left,
+                    };
+
+                    match self
+                        .ipc_client
+                        .drag(start_x, start_y, end_x, end_y, mouse_button)
+                        .await
+                    {
+                        Ok(()) => json!({
+                            "success": true,
+                            "message": format!("Dragged element {} from ({:.1}, {:.1}) to ({}, {})", id, start_x, start_y, end_x, end_y),
+                            "source_bounds": {
+                                "x": bounds.x,
+                                "y": bounds.y,
+                                "width": bounds.width,
+                                "height": bounds.height
+                            }
+                        })
+                        .to_string(),
+                        Err(e) => json!({
+                            "error": "drag_error",
+                            "message": format!("Failed to drag: {}", e)
+                        })
+                        .to_string(),
+                    }
+                }
+                Ok(None) => json!({
+                    "error": "no_bounds",
+                    "message": format!("Element {} does not have Component interface (no bounds available)", id)
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "get_bounds_error",
+                    "message": format!("Failed to get element bounds: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (id, end_x, end_y, button);
+            json!({
+                "error": "not_available",
+                "message": "drag_element requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    // ========================================================================
+    // Priority 2: Element Information (AT-SPI Component)
+    // ========================================================================
+
+    /// Get element bounding box
+    #[tool(
+        description = "Get the bounding box (position and size) of a UI element by ID. Uses AT-SPI Component interface."
+    )]
+    async fn get_bounds(
+        &self,
+        Parameters(GetBoundsRequest { id }): Parameters<GetBoundsRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::get_bounds_blocking("demo", id) {
+                Ok(Some(bounds)) => json!({
+                    "x": bounds.x,
+                    "y": bounds.y,
+                    "width": bounds.width,
+                    "height": bounds.height,
+                    "center_x": bounds.x + bounds.width / 2.0,
+                    "center_y": bounds.y + bounds.height / 2.0
+                })
+                .to_string(),
+                Ok(None) => json!({
+                    "error": "no_component",
+                    "message": "Element does not have Component interface"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "get_bounds_error",
+                    "message": format!("Failed to get bounds: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            json!({
+                "error": "not_available",
+                "message": "get_bounds requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Focus an element
+    #[tool(description = "Focus a UI element by ID. Uses AT-SPI Component interface.")]
+    async fn focus_element(
+        &self,
+        Parameters(FocusElementRequest { id }): Parameters<FocusElementRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::focus_element_blocking("demo", id) {
+                Ok(true) => json!({
+                    "success": true,
+                    "message": format!("Focused element with id {}", id)
+                })
+                .to_string(),
+                Ok(false) => json!({
+                    "success": false,
+                    "message": "Focus action returned false"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "focus_error",
+                    "message": format!("Failed to focus element: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            json!({
+                "error": "not_available",
+                "message": "focus_element requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Scroll element into view
+    #[tool(description = "Scroll a UI element into view by ID. Uses AT-SPI Component interface.")]
+    async fn scroll_to_element(
+        &self,
+        Parameters(ScrollToElementRequest { id }): Parameters<ScrollToElementRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::scroll_to_element_blocking("demo", id) {
+                Ok(true) => json!({
+                    "success": true,
+                    "message": format!("Scrolled element {} into view", id)
+                })
+                .to_string(),
+                Ok(false) => json!({
+                    "success": false,
+                    "message": "Scroll action returned false"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "scroll_error",
+                    "message": format!("Failed to scroll element into view: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            json!({
+                "error": "not_available",
+                "message": "scroll_to_element requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    // ========================================================================
+    // Priority 3: Value Operations (AT-SPI Value)
+    // ========================================================================
+
+    /// Get value of an element (for sliders, progress bars, etc.)
+    #[tool(
+        description = "Get the current value, min, max, and increment of a value element (slider, progress bar, etc.). Uses AT-SPI Value interface."
+    )]
+    async fn get_value(
+        &self,
+        Parameters(GetValueRequest { id }): Parameters<GetValueRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::get_value_blocking("demo", id) {
+                Ok(Some(value_info)) => {
+                    serde_json::to_string_pretty(&value_info).unwrap_or_else(|e| {
+                        json!({
+                            "error": "serialization_error",
+                            "message": format!("Failed to serialize value: {}", e)
+                        })
+                        .to_string()
+                    })
+                }
+                Ok(None) => json!({
+                    "error": "no_value",
+                    "message": "Element does not have Value interface"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "get_value_error",
+                    "message": format!("Failed to get value: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            json!({
+                "error": "not_available",
+                "message": "get_value requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Set value of an element (for sliders, etc.)
+    #[tool(
+        description = "Set the value of a value element (slider, etc.). Uses AT-SPI Value interface."
+    )]
+    async fn set_value(
+        &self,
+        Parameters(SetValueRequest { id, value }): Parameters<SetValueRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::set_value_blocking("demo", id, value) {
+                Ok(true) => json!({
+                    "success": true,
+                    "message": format!("Set value to {} on element {}", value, id)
+                })
+                .to_string(),
+                Ok(false) => json!({
+                    "success": false,
+                    "message": "Set value action returned false"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "set_value_error",
+                    "message": format!("Failed to set value: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (id, value);
+            json!({
+                "error": "not_available",
+                "message": "set_value requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    // ========================================================================
+    // Priority 4: Selection Operations (AT-SPI Selection)
+    // ========================================================================
+
+    /// Select an item in a selection container
+    #[tool(
+        description = "Select an item by index in a selection container (list, combo box, etc.). Uses AT-SPI Selection interface."
+    )]
+    async fn select_item(
+        &self,
+        Parameters(SelectItemRequest { id, index }): Parameters<SelectItemRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::select_item_blocking("demo", id, index) {
+                Ok(true) => json!({
+                    "success": true,
+                    "message": format!("Selected item at index {} in element {}", index, id)
+                })
+                .to_string(),
+                Ok(false) => json!({
+                    "success": false,
+                    "message": "Select action returned false"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "select_error",
+                    "message": format!("Failed to select item: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (id, index);
+            json!({
+                "error": "not_available",
+                "message": "select_item requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Deselect an item in a selection container
+    #[tool(
+        description = "Deselect an item by index in a selection container. Uses AT-SPI Selection interface."
+    )]
+    async fn deselect_item(
+        &self,
+        Parameters(DeselectItemRequest { id, index }): Parameters<DeselectItemRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::deselect_item_blocking("demo", id, index) {
+                Ok(true) => json!({
+                    "success": true,
+                    "message": format!("Deselected item at index {} in element {}", index, id)
+                })
+                .to_string(),
+                Ok(false) => json!({
+                    "success": false,
+                    "message": "Deselect action returned false"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "deselect_error",
+                    "message": format!("Failed to deselect item: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (id, index);
+            json!({
+                "error": "not_available",
+                "message": "deselect_item requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Get count of selected items
+    #[tool(
+        description = "Get the number of selected items in a selection container. Uses AT-SPI Selection interface."
+    )]
+    async fn get_selected_count(
+        &self,
+        Parameters(GetSelectedCountRequest { id }): Parameters<GetSelectedCountRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::get_selected_count_blocking("demo", id) {
+                Ok(count) => json!({
+                    "count": count,
+                    "message": format!("Element {} has {} selected items", id, count)
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "get_selected_count_error",
+                    "message": format!("Failed to get selected count: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            json!({
+                "error": "not_available",
+                "message": "get_selected_count requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Select all items in a selection container
+    #[tool(
+        description = "Select all items in a selection container. Uses AT-SPI Selection interface."
+    )]
+    async fn select_all(
+        &self,
+        Parameters(SelectionContainerRequest { id }): Parameters<SelectionContainerRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::select_all_blocking("demo", id) {
+                Ok(true) => json!({
+                    "success": true,
+                    "message": format!("Selected all items in element {}", id)
+                })
+                .to_string(),
+                Ok(false) => json!({
+                    "success": false,
+                    "message": "Select all action returned false"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "select_all_error",
+                    "message": format!("Failed to select all: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            json!({
+                "error": "not_available",
+                "message": "select_all requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Clear all selections in a selection container
+    #[tool(
+        description = "Clear all selections in a selection container. Uses AT-SPI Selection interface."
+    )]
+    async fn clear_selection(
+        &self,
+        Parameters(SelectionContainerRequest { id }): Parameters<SelectionContainerRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::clear_selection_blocking("demo", id) {
+                Ok(true) => json!({
+                    "success": true,
+                    "message": format!("Cleared all selections in element {}", id)
+                })
+                .to_string(),
+                Ok(false) => json!({
+                    "success": false,
+                    "message": "Clear selection action returned false"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "clear_selection_error",
+                    "message": format!("Failed to clear selection: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            json!({
+                "error": "not_available",
+                "message": "clear_selection requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    // ========================================================================
+    // Priority 5: Text Operations (AT-SPI Text)
+    // ========================================================================
+
+    /// Get text content of an element
+    #[tool(
+        description = "Get the text content, length, and caret position of a text element. Uses AT-SPI Text interface."
+    )]
+    async fn get_text(
+        &self,
+        Parameters(GetTextRequest { id }): Parameters<GetTextRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::get_text_blocking("demo", id) {
+                Ok(Some(text_info)) => {
+                    serde_json::to_string_pretty(&text_info).unwrap_or_else(|e| {
+                        json!({
+                            "error": "serialization_error",
+                            "message": format!("Failed to serialize text: {}", e)
+                        })
+                        .to_string()
+                    })
+                }
+                Ok(None) => json!({
+                    "error": "no_text",
+                    "message": "Element does not have Text interface"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "get_text_error",
+                    "message": format!("Failed to get text: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            json!({
+                "error": "not_available",
+                "message": "get_text requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Get text selection range
+    #[tool(
+        description = "Get the current text selection range (start and end offsets). Uses AT-SPI Text interface."
+    )]
+    async fn get_text_selection(
+        &self,
+        Parameters(GetTextSelectionRequest { id }): Parameters<GetTextSelectionRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::get_text_selection_blocking("demo", id) {
+                Ok(Some(selection)) => {
+                    serde_json::to_string_pretty(&selection).unwrap_or_else(|e| {
+                        json!({
+                            "error": "serialization_error",
+                            "message": format!("Failed to serialize selection: {}", e)
+                        })
+                        .to_string()
+                    })
+                }
+                Ok(None) => json!({
+                    "has_selection": false,
+                    "message": "No text selection"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "get_text_selection_error",
+                    "message": format!("Failed to get text selection: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            json!({
+                "error": "not_available",
+                "message": "get_text_selection requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Set text selection range
+    #[tool(
+        description = "Set the text selection range (start and end offsets). Uses AT-SPI Text interface."
+    )]
+    async fn set_text_selection(
+        &self,
+        Parameters(SetTextSelectionRequest { id, start, end }): Parameters<SetTextSelectionRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::set_text_selection_blocking("demo", id, start, end) {
+                Ok(true) => json!({
+                    "success": true,
+                    "message": format!("Set text selection from {} to {} on element {}", start, end, id)
+                })
+                .to_string(),
+                Ok(false) => json!({
+                    "success": false,
+                    "message": "Set text selection action returned false"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "set_text_selection_error",
+                    "message": format!("Failed to set text selection: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (id, start, end);
+            json!({
+                "error": "not_available",
+                "message": "set_text_selection requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Get caret (cursor) position
+    #[tool(
+        description = "Get the current caret (cursor) position in a text element. Uses AT-SPI Text interface."
+    )]
+    async fn get_caret_position(
+        &self,
+        Parameters(GetCaretPositionRequest { id }): Parameters<GetCaretPositionRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::get_caret_position_blocking("demo", id) {
+                Ok(offset) => json!({
+                    "offset": offset,
+                    "message": format!("Caret at position {} in element {}", offset, id)
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "get_caret_position_error",
+                    "message": format!("Failed to get caret position: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            json!({
+                "error": "not_available",
+                "message": "get_caret_position requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Set caret (cursor) position
+    #[tool(
+        description = "Set the caret (cursor) position in a text element. Uses AT-SPI Text interface."
+    )]
+    async fn set_caret_position(
+        &self,
+        Parameters(SetCaretPositionRequest { id, offset }): Parameters<SetCaretPositionRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::set_caret_position_blocking("demo", id, offset) {
+                Ok(true) => json!({
+                    "success": true,
+                    "message": format!("Set caret to position {} in element {}", offset, id)
+                })
+                .to_string(),
+                Ok(false) => json!({
+                    "success": false,
+                    "message": "Set caret position action returned false"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "set_caret_position_error",
+                    "message": format!("Failed to set caret position: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (id, offset);
+            json!({
+                "error": "not_available",
+                "message": "set_caret_position requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
 }
 
 #[tool_handler]
@@ -730,8 +1805,24 @@ impl ServerHandler for EguiMcpServer {
                  'keyboard_input' to send keyboard input (IPC), \
                  'scroll' to scroll at specific coordinates (IPC), \
                  'hover' to move mouse to specific coordinates (IPC), \
-                 'drag' to drag from one point to another (IPC), and \
-                 'take_screenshot' to capture the current UI (IPC)."
+                 'drag' to drag from one point to another (IPC), \
+                 'take_screenshot' to capture the current UI (IPC), \
+                 'drag_element' to drag an element to target coordinates (AT-SPI + IPC), \
+                 'get_bounds' to get element bounding box (AT-SPI Component), \
+                 'focus_element' to focus an element (AT-SPI Component), \
+                 'scroll_to_element' to scroll element into view (AT-SPI Component), \
+                 'get_value' to get slider/progress value (AT-SPI Value), \
+                 'set_value' to set slider value (AT-SPI Value), \
+                 'select_item' to select item in list/combo (AT-SPI Selection), \
+                 'deselect_item' to deselect item (AT-SPI Selection), \
+                 'get_selected_count' to count selected items (AT-SPI Selection), \
+                 'select_all' to select all items (AT-SPI Selection), \
+                 'clear_selection' to clear all selections (AT-SPI Selection), \
+                 'get_text' to get text content (AT-SPI Text), \
+                 'get_text_selection' to get selected text range (AT-SPI Text), \
+                 'set_text_selection' to select text range (AT-SPI Text), \
+                 'get_caret_position' to get cursor position (AT-SPI Text), and \
+                 'set_caret_position' to set cursor position (AT-SPI Text)."
                     .into(),
             ),
         }

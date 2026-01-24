@@ -39,7 +39,7 @@ fn main() -> eframe::Result<()> {
     );
 
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([400.0, 300.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([500.0, 600.0]),
         ..Default::default()
     };
 
@@ -63,6 +63,10 @@ struct DemoApp {
     last_drag: Option<((f32, f32), (f32, f32))>,
     last_key: Option<String>,
     last_scroll: Option<(f32, f32, f32, f32)>,
+    // Phase 6 test elements
+    slider_value: f64,
+    selected_item: usize,
+    multi_line_text: String,
 }
 
 impl DemoApp {
@@ -82,66 +86,10 @@ impl DemoApp {
             last_drag: None,
             last_key: None,
             last_scroll: None,
-        }
-    }
-
-    /// Process pending MCP inputs and update state
-    fn process_pending_inputs(&mut self) {
-        let inputs = self.runtime.block_on(self.mcp_client.take_pending_inputs());
-        for input in inputs {
-            match input {
-                PendingInput::MoveMouse { x, y } => {
-                    self.last_mouse_pos = Some((x, y));
-                    tracing::info!("Mouse moved to ({}, {})", x, y);
-                }
-                PendingInput::Click { x, y, button } => {
-                    let button_name = match button {
-                        MouseButton::Left => "left",
-                        MouseButton::Right => "right",
-                        MouseButton::Middle => "middle",
-                    };
-                    self.last_click = Some((x, y, button_name.to_string()));
-                    tracing::info!("Click at ({}, {}) with {} button", x, y, button_name);
-                }
-                PendingInput::DoubleClick { x, y, button } => {
-                    let button_name = match button {
-                        MouseButton::Left => "left",
-                        MouseButton::Right => "right",
-                        MouseButton::Middle => "middle",
-                    };
-                    self.last_double_click = Some((x, y, button_name.to_string()));
-                    tracing::info!("Double click at ({}, {}) with {} button", x, y, button_name);
-                }
-                PendingInput::Drag {
-                    start_x,
-                    start_y,
-                    end_x,
-                    end_y,
-                    button: _,
-                } => {
-                    self.last_drag = Some(((start_x, start_y), (end_x, end_y)));
-                    tracing::info!(
-                        "Drag from ({}, {}) to ({}, {})",
-                        start_x,
-                        start_y,
-                        end_x,
-                        end_y
-                    );
-                }
-                PendingInput::Keyboard { key } => {
-                    self.last_key = Some(key.clone());
-                    tracing::info!("Key pressed: {}", key);
-                }
-                PendingInput::Scroll {
-                    x,
-                    y,
-                    delta_x,
-                    delta_y,
-                } => {
-                    self.last_scroll = Some((x, y, delta_x, delta_y));
-                    tracing::info!("Scroll at ({}, {}) delta ({}, {})", x, y, delta_x, delta_y);
-                }
-            }
+            // Phase 6 test elements
+            slider_value: 50.0,
+            selected_item: 0,
+            multi_line_text: "Hello, World!\nThis is a test.\nEdit me!".to_string(),
         }
     }
 
@@ -171,9 +119,63 @@ impl DemoApp {
 }
 
 impl eframe::App for DemoApp {
+    /// Hook to inject MCP inputs as egui events before processing
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        let inputs = self.runtime.block_on(self.mcp_client.take_pending_inputs());
+
+        // Update visualization state before injecting
+        for input in &inputs {
+            match input {
+                PendingInput::MoveMouse { x, y } => {
+                    self.last_mouse_pos = Some((*x, *y));
+                }
+                PendingInput::Click { x, y, button } => {
+                    let button_name = match button {
+                        MouseButton::Left => "left",
+                        MouseButton::Right => "right",
+                        MouseButton::Middle => "middle",
+                    };
+                    self.last_click = Some((*x, *y, button_name.to_string()));
+                }
+                PendingInput::DoubleClick { x, y, button } => {
+                    let button_name = match button {
+                        MouseButton::Left => "left",
+                        MouseButton::Right => "right",
+                        MouseButton::Middle => "middle",
+                    };
+                    self.last_double_click = Some((*x, *y, button_name.to_string()));
+                }
+                PendingInput::Drag {
+                    start_x,
+                    start_y,
+                    end_x,
+                    end_y,
+                    ..
+                } => {
+                    self.last_drag = Some(((*start_x, *start_y), (*end_x, *end_y)));
+                }
+                PendingInput::Keyboard { key } => {
+                    self.last_key = Some(key.clone());
+                }
+                PendingInput::Scroll {
+                    x,
+                    y,
+                    delta_x,
+                    delta_y,
+                } => {
+                    self.last_scroll = Some((*x, *y, *delta_x, *delta_y));
+                }
+            }
+        }
+
+        // Use the helper to inject inputs into egui
+        egui_mcp_client::inject_inputs(ctx, raw_input, inputs);
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Process pending MCP inputs
-        self.process_pending_inputs();
+        // Request periodic repaint to handle MCP inputs even when window is in background
+        // This ensures raw_input_hook is called regularly to process pending inputs
+        ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60fps for responsive MCP input
 
         // Check if screenshot is requested and send viewport command
         let screenshot_requested = self
@@ -235,6 +237,36 @@ impl eframe::App for DemoApp {
                     &self.name
                 }
             ));
+
+            // Phase 6: Value Interface Test (Slider)
+            ui.separator();
+            ui.heading("Phase 6 Test Elements");
+
+            ui.horizontal(|ui| {
+                ui.label("Slider (Value):");
+                ui.add(egui::Slider::new(&mut self.slider_value, 0.0..=100.0).text("value"));
+            });
+
+            // Phase 6: Selection Interface Test (ComboBox)
+            let items = ["Item A", "Item B", "Item C", "Item D"];
+            ui.horizontal(|ui| {
+                ui.label("ComboBox (Selection):");
+                egui::ComboBox::from_label("")
+                    .selected_text(items[self.selected_item])
+                    .show_ui(ui, |ui| {
+                        for (idx, item) in items.iter().enumerate() {
+                            ui.selectable_value(&mut self.selected_item, idx, *item);
+                        }
+                    });
+            });
+
+            // Phase 6: Text Interface Test (Multiline TextEdit)
+            ui.label("TextArea (Text Interface):");
+            ui.add(
+                egui::TextEdit::multiline(&mut self.multi_line_text)
+                    .desired_rows(3)
+                    .desired_width(f32::INFINITY),
+            );
 
             // MCP Input Visualization Section
             ui.separator();
