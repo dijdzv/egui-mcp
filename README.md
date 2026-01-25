@@ -26,9 +26,9 @@ egui-mcp provides UI automation capabilities for [egui](https://github.com/emilk
 | `get_caret_position` | Get cursor position | AT-SPI Text |
 | `get_text_selection` | Get selected text range | AT-SPI Text |
 | `set_text_selection` | Set text selection | AT-SPI Text |
-| `get_value` | Get slider/progress value | AT-SPI Value * |
-| `set_value` | Set slider value | AT-SPI Value * |
-| `get_selected_count` | Get count of selected items | AT-SPI Selection ** |
+| `get_value` | Get slider/progress value | AT-SPI Value |
+| `set_value` | Set slider value | AT-SPI Value |
+| `get_selected_count` | Get count of selected items | AT-SPI Selection * |
 | `click_at` | Click at coordinates | IPC |
 | `double_click` | Double click at coordinates | IPC |
 | `hover` | Move mouse to coordinates | IPC |
@@ -39,9 +39,7 @@ egui-mcp provides UI automation capabilities for [egui](https://github.com/emilk
 | `ping` | Verify server is running | - |
 | `check_connection` | Check connection to egui app | IPC |
 
-> \* Value interface requires [egui fork with `set_numeric_value()` fix](https://github.com/dijdzv/egui). See [docs/egui-accessibility-pr.md](docs/egui-accessibility-pr.md) for details.
->
-> \*\* For ComboBox, checks the name property to determine if something is selected (returns 0 or 1).
+> \* For ComboBox, checks the name property to determine if something is selected (returns 0 or 1).
 
 ### Not Working (Limitation)
 

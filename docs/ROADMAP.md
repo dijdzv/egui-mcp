@@ -111,7 +111,7 @@ The following AT-SPI interfaces are now working:
 | Component | `get_bounds`, `focus_element`, `scroll_to_element`, `drag_element` | ✅ Working | |
 | Text (read) | `get_text`, `get_caret_position` | ✅ Working | Read-only operations |
 | Text (selection) | `get_text_selection`, `set_text_selection` | ✅ Working | atspi-proxies workaround (see below) |
-| Value | `get_value`, `set_value` | ✅ Working | Requires egui fork with `set_numeric_value()` fix |
+| Value | `get_value`, `set_value` | ✅ Working | Works in egui 0.33+ |
 | Selection (partial) | `get_selected_count` | ✅ Working | ComboBox uses name property |
 
 ### Not Working (Limitation)

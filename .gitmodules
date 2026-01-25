@@ -1,3 +1,0 @@
-[submodule "external/egui"]
-	path = external/egui
-	url = https://github.com/dijdzv/egui.git

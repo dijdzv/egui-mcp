@@ -1,6 +1,6 @@
-# egui Accessibility Improvements for AT-SPI
+# egui Accessibility Analysis for AT-SPI
 
-This document describes AT-SPI accessibility issues in egui and tracks our fixes in the fork.
+This document describes AT-SPI accessibility behavior in egui and documents our investigation findings.
 
 ## Background
 
@@ -9,23 +9,18 @@ egui uses [AccessKit](https://github.com/AccessKit/accesskit) to provide cross-p
 - macOS: NSAccessibility
 - Linux: AT-SPI2 via D-Bus
 
-## Fork Repository
-
-- **URL**: https://github.com/dijdzv/egui
-- **Base**: egui 0.33.3 (`44cdd653`)
-
 ---
 
 ## Current Status
 
-| Interface | Tools | Status | Fix |
-|-----------|-------|--------|-----|
+| Interface | Tools | Status | Notes |
+|-----------|-------|--------|-------|
 | Action | `click_element` | ✅ Working | - |
 | Component | `get_bounds`, `focus_element`, `scroll_to_element` | ✅ Working | - |
 | Text (read) | `get_text`, `get_caret_position` | ✅ Working | - |
 | Text (selection) | `get_text_selection`, `set_text_selection` | ✅ Working | atspi-proxies workaround |
 | Text (write) | `set_caret_position` | ⛔ egui limitation | IPC `click_at` |
-| Value | `get_value`, `set_value` | ✅ Working | Fork commit `af1309a2` |
+| Value | `get_value`, `set_value` | ✅ Working | Works in egui 0.33+ |
 | Selection (read) | `get_selected_count` | ✅ Working | ComboBox uses name property |
 | Selection (write) | `select_item`, `deselect_item` | ⛔ egui architecture | IPC `click_at` + `keyboard_input` |
 | Selection (bulk) | `select_all`, `clear_selection` | ➖ Not needed | egui only has single selection |
@@ -33,38 +28,20 @@ egui uses [AccessKit](https://github.com/AccessKit/accesskit) to provide cross-p
 
 ---
 
-## Issue 1: Value Interface (Slider, DragValue) - FIXED
+## Value Interface (Slider, DragValue) - WORKING
 
-**Symptom**: AT-SPI Value interface methods fail with "Unknown property 'CurrentValue'"
+**Status**: ✅ Works in egui 0.33+
 
-**Root Cause**: `set_numeric_value()` is never called on the AccessKit builder.
+**Investigation**: Initially we thought a fork fix was needed, but investigation revealed that egui 0.33.0 already correctly implements the Value interface:
 
-```rust
-// accesskit_atspi_common/src/node.rs
-fn supports_value(&self) -> bool {
-    self.current_value().is_some()  // requires numeric_value to be set
-}
-```
+1. `WidgetInfo::slider()` sets `value: Some(value)`
+2. `fill_accesskit_node_from_widget_info()` calls `builder.set_numeric_value(value)`
 
-**Fix** (commit `af1309a2`):
-
-```rust
-// crates/egui/src/widgets/slider.rs
-builder.set_min_numeric_value(*self.range.start());
-builder.set_max_numeric_value(*self.range.end());
-builder.set_numeric_value(value);  // Added
-
-// crates/egui/src/widgets/drag_value.rs
-builder.set_numeric_value(value);  // Added
-```
-
-**Status**: ✅ Implemented and tested
-**Complexity**: Easy (one line per widget)
-**PR-ready**: Yes
+The Value interface works out of the box with egui 0.33+.
 
 ---
 
-## Issue 2: EditableText Interface - NOT FIXABLE IN EGUI
+## EditableText Interface - NOT FIXABLE IN EGUI
 
 **Symptom**: `set_text` fails with "Unknown interface 'org.a11y.atspi.EditableText'"
 
@@ -92,14 +69,13 @@ builder.set_numeric_value(value);  // Added
 4. **Conclusion**:
    - Fixing egui alone cannot enable EditableText
    - AccessKit's AT-SPI adapter (`accesskit_atspi_common`) needs modification to implement `EditableText` interface
-   - This is **out of scope** for egui fork fixes
+   - This is **out of scope** for egui fixes
 
-**Status**: ❌ Cannot be fixed in egui (requires AccessKit changes)
 **Workaround**: Use IPC-based keyboard simulation (`click_at` + `keyboard_input`) - already implemented in egui-mcp-server
 
 ---
 
-## Issue 3: Text Selection - FIXED (atspi-proxies bug)
+## Text Selection - FIXED (atspi-proxies bug)
 
 **Symptom**: `get_text_selection`, `set_text_selection` fail with "Unknown method 'GetNselections'"
 
@@ -129,7 +105,6 @@ let n_selections: i32 = text_proxy
 ```
 
 **Status**: ✅ Fixed (in egui-mcp-server, not egui)
-**Complexity**: Easy
 
 ### Future: Workaround Will Become Unnecessary
 
@@ -137,7 +112,7 @@ This workaround will become unnecessary when egui merges [PR #7850](https://gith
 
 ---
 
-## Issue 4: Selection Interface (ComboBox) - NOT FIXABLE IN EGUI (Architecture)
+## Selection Interface (ComboBox) - NOT FIXABLE IN EGUI (Architecture)
 
 **Symptom**: Selection methods fail because ComboBox has no child items visible to AT-SPI.
 
@@ -162,12 +137,18 @@ pub fn select_child(&self, child_index: usize) -> Result<bool> {
 }
 ```
 
-### Required Changes (Complex)
+### get_selected_count Workaround
 
-To fix this properly, egui would need to:
-1. Register popup menu items as children of ComboBox
-2. Track selected state per item
-3. Handle the parent-child relationship across popup windows
+For ComboBox, we check the `name` property instead of using the Selection interface:
+
+```rust
+// ComboBox: check if there's a selected value (stored in name property)
+if role == atspi_common::Role::ComboBox {
+    let name: String = accessible_proxy.name().await.unwrap_or_default();
+    // If name is not empty, something is selected
+    return Ok(if name.is_empty() { 0 } else { 1 });
+}
+```
 
 **Status**: ❌ Cannot be easily fixed (requires architectural changes to egui)
 **Workaround**: Use IPC-based `click_at` + `keyboard_input` to interact with ComboBox
@@ -176,20 +157,20 @@ To fix this properly, egui would need to:
 
 ## Summary
 
-| Issue | Complexity | Status | Upstream PR |
-|-------|------------|--------|-------------|
-| Value Interface | Easy | ✅ Fixed | Ready (egui fork) |
-| EditableText | N/A | ⛔ AccessKit limitation | N/A |
-| Text Selection | Easy | ✅ Fixed | N/A (atspi-proxies bug) |
-| Selection (read) | Easy | ✅ Fixed | N/A (egui-mcp-server) |
-| Selection (write) | Hard | ⛔ egui architecture | N/A |
+| Issue | Status | Notes |
+|-------|--------|-------|
+| Value Interface | ✅ Working | egui 0.33+ |
+| EditableText | ⛔ AccessKit limitation | Use IPC workaround |
+| Text Selection | ✅ Fixed | atspi-proxies workaround in egui-mcp-server |
+| Selection (read) | ✅ Fixed | ComboBox uses name property |
+| Selection (write) | ⛔ egui architecture | Use IPC workaround |
 
 ---
 
 ## Testing
 
 ```bash
-# Run demo app with fork
+# Run demo app
 just demo
 
 # Test AT-SPI tools via MCP
