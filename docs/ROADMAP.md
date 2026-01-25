@@ -113,6 +113,7 @@ The following AT-SPI interfaces are now working:
 | Text (selection) | `get_text_selection`, `set_text_selection` | ✅ Working | atspi-proxies workaround (see below) |
 | Value | `get_value`, `set_value` | ✅ Working | Works in egui 0.33+ |
 | Selection (partial) | `get_selected_count` | ✅ Working | ComboBox uses name property |
+| Text (caret) | `set_caret_position` | ✅ Working | Requires focus first |
 
 ### Not Working (Limitation)
 
@@ -120,7 +121,6 @@ The following AT-SPI interfaces are now working:
 |-----------|---------------|-------|------------|
 | EditableText | `set_text` | AccessKit doesn't implement EditableText interface | IPC `keyboard_input` |
 | Selection | `select_item`, `deselect_item` | egui ComboBox items not registered as children | IPC `click_at` + `keyboard_input` |
-| Text | `set_caret_position` | egui doesn't handle SetTextSelection action | IPC `click_at` |
 
 ### Not Needed
 

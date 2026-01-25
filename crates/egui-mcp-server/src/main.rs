@@ -590,7 +590,7 @@ impl EguiMcpServer {
 
     /// Set text content of a text input element
     #[tool(
-        description = "Set text content of a text input element by its ID (as string). Uses AT-SPI EditableText interface."
+        description = "Set text content of a text input element by its ID (as string). Note: Does not work with egui (AccessKit limitation). Use keyboard_input instead. Uses AT-SPI EditableText interface."
     )]
     async fn set_text(
         &self,
@@ -1273,7 +1273,7 @@ impl EguiMcpServer {
 
     /// Select an item in a selection container
     #[tool(
-        description = "Select an item by index in a selection container (list, combo box, etc.). Uses AT-SPI Selection interface."
+        description = "Select an item by index in a selection container (list, combo box, etc.). Note: Does not work with egui ComboBox (items not exposed as children). Use click_at + keyboard_input instead. Uses AT-SPI Selection interface."
     )]
     async fn select_item(
         &self,
@@ -1324,7 +1324,7 @@ impl EguiMcpServer {
 
     /// Deselect an item in a selection container
     #[tool(
-        description = "Deselect an item by index in a selection container. Uses AT-SPI Selection interface."
+        description = "Deselect an item by index in a selection container. Note: Does not work with egui ComboBox. Use click_at + keyboard_input instead. Uses AT-SPI Selection interface."
     )]
     async fn deselect_item(
         &self,
@@ -1375,7 +1375,7 @@ impl EguiMcpServer {
 
     /// Get count of selected items
     #[tool(
-        description = "Get the number of selected items in a selection container. Uses AT-SPI Selection interface."
+        description = "Get the number of selected items in a selection container. For egui ComboBox, checks name property (returns 0 or 1). Uses AT-SPI Selection interface."
     )]
     async fn get_selected_count(
         &self,
@@ -1421,7 +1421,7 @@ impl EguiMcpServer {
 
     /// Select all items in a selection container
     #[tool(
-        description = "Select all items in a selection container. Uses AT-SPI Selection interface."
+        description = "Select all items in a selection container. Note: Not useful for egui (only has single-selection widgets like ComboBox and RadioGroup). Uses AT-SPI Selection interface."
     )]
     async fn select_all(
         &self,
@@ -1472,7 +1472,7 @@ impl EguiMcpServer {
 
     /// Clear all selections in a selection container
     #[tool(
-        description = "Clear all selections in a selection container. Uses AT-SPI Selection interface."
+        description = "Clear all selections in a selection container. Note: Not useful for egui (only has single-selection widgets like ComboBox and RadioGroup). Uses AT-SPI Selection interface."
     )]
     async fn clear_selection(
         &self,
@@ -1582,7 +1582,7 @@ impl EguiMcpServer {
 
     /// Get text selection range
     #[tool(
-        description = "Get the current text selection range (start and end offsets). Uses AT-SPI Text interface."
+        description = "Get the current text selection range (start and end offsets). Returns -1 if element has no focus. Uses AT-SPI Text interface."
     )]
     async fn get_text_selection(
         &self,
@@ -1637,7 +1637,7 @@ impl EguiMcpServer {
 
     /// Set text selection range
     #[tool(
-        description = "Set the text selection range (start and end offsets). Uses AT-SPI Text interface."
+        description = "Set the text selection range (start and end offsets). Requires focus first (use focus_element). Uses AT-SPI Text interface."
     )]
     async fn set_text_selection(
         &self,
@@ -1688,7 +1688,7 @@ impl EguiMcpServer {
 
     /// Get caret (cursor) position
     #[tool(
-        description = "Get the current caret (cursor) position in a text element. Uses AT-SPI Text interface."
+        description = "Get the current caret (cursor) position in a text element. Returns -1 if element has no focus. Uses AT-SPI Text interface."
     )]
     async fn get_caret_position(
         &self,
@@ -1734,7 +1734,7 @@ impl EguiMcpServer {
 
     /// Set caret (cursor) position
     #[tool(
-        description = "Set the caret (cursor) position in a text element. Uses AT-SPI Text interface."
+        description = "Set the caret (cursor) position in a text element. Requires focus first (use focus_element). Uses AT-SPI Text interface."
     )]
     async fn set_caret_position(
         &self,

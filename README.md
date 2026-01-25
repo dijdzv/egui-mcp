@@ -23,9 +23,10 @@ egui-mcp provides UI automation capabilities for [egui](https://github.com/emilk
 | `scroll_to_element` | Scroll element into view | AT-SPI Component |
 | `drag_element` | Drag element to target | AT-SPI Component + IPC |
 | `get_text` | Get text content | AT-SPI Text |
-| `get_caret_position` | Get cursor position | AT-SPI Text |
-| `get_text_selection` | Get selected text range | AT-SPI Text |
-| `set_text_selection` | Set text selection | AT-SPI Text |
+| `get_caret_position` | Get cursor position | AT-SPI Text ** |
+| `set_caret_position` | Set cursor position | AT-SPI Text ** |
+| `get_text_selection` | Get selected text range | AT-SPI Text ** |
+| `set_text_selection` | Set text selection | AT-SPI Text ** |
 | `get_value` | Get slider/progress value | AT-SPI Value |
 | `set_value` | Set slider value | AT-SPI Value |
 | `get_selected_count` | Get count of selected items | AT-SPI Selection * |
@@ -40,6 +41,8 @@ egui-mcp provides UI automation capabilities for [egui](https://github.com/emilk
 | `check_connection` | Check connection to egui app | IPC |
 
 > \* For ComboBox, checks the name property to determine if something is selected (returns 0 or 1).
+>
+> \*\* These tools require the element to have focus first. Use `focus_element` before calling. Returns -1 if no focus.
 
 ### Not Working (Limitation)
 
@@ -50,7 +53,6 @@ The following tools are implemented but **do not work** due to various limitatio
 | `set_text` | EditableText | AccessKit doesn't implement EditableText interface | Use `keyboard_input` |
 | `select_item` | Selection | egui ComboBox doesn't expose child items to AccessKit | Use `click_at` + `keyboard_input` |
 | `deselect_item` | Selection | Same as above | Same as above |
-| `set_caret_position` | Text | egui doesn't handle SetTextSelection action | Use `click_at` |
 
 ### Not Needed
 

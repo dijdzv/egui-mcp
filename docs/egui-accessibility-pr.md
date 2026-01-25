@@ -19,7 +19,7 @@ egui uses [AccessKit](https://github.com/AccessKit/accesskit) to provide cross-p
 | Component | `get_bounds`, `focus_element`, `scroll_to_element` | ✅ Working | - |
 | Text (read) | `get_text`, `get_caret_position` | ✅ Working | - |
 | Text (selection) | `get_text_selection`, `set_text_selection` | ✅ Working | atspi-proxies workaround |
-| Text (write) | `set_caret_position` | ⛔ egui limitation | IPC `click_at` |
+| Text (write) | `set_caret_position` | ✅ Working | Requires focus first |
 | Value | `get_value`, `set_value` | ✅ Working | Works in egui 0.33+ |
 | Selection (read) | `get_selected_count` | ✅ Working | ComboBox uses name property |
 | Selection (write) | `select_item`, `deselect_item` | ⛔ egui architecture | IPC `click_at` + `keyboard_input` |
