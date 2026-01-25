@@ -362,9 +362,13 @@ struct WaitForStateRequest {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct CompareScreenshotsRequest {
     #[schemars(description = "First screenshot as base64-encoded PNG")]
-    base64_a: String,
+    base64_a: Option<String>,
     #[schemars(description = "Second screenshot as base64-encoded PNG")]
-    base64_b: String,
+    base64_b: Option<String>,
+    #[schemars(description = "Path to first screenshot file (alternative to base64_a)")]
+    path_a: Option<String>,
+    #[schemars(description = "Path to second screenshot file (alternative to base64_b)")]
+    path_b: Option<String>,
     #[schemars(
         description = "Comparison algorithm: 'hybrid' (default), 'mssim' (structural), 'rms' (pixel-wise)"
     )]
@@ -375,9 +379,17 @@ struct CompareScreenshotsRequest {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct DiffScreenshotsRequest {
     #[schemars(description = "First screenshot as base64-encoded PNG")]
-    base64_a: String,
+    base64_a: Option<String>,
     #[schemars(description = "Second screenshot as base64-encoded PNG")]
-    base64_b: String,
+    base64_b: Option<String>,
+    #[schemars(description = "Path to first screenshot file (alternative to base64_a)")]
+    path_a: Option<String>,
+    #[schemars(description = "Path to second screenshot file (alternative to base64_b)")]
+    path_b: Option<String>,
+    #[schemars(
+        description = "If true, save diff image to a temp file and return the path. If false (default), return base64-encoded data."
+    )]
+    save_to_file: Option<bool>,
 }
 
 /// Request for highlight_element tool
@@ -2417,6 +2429,42 @@ impl EguiMcpServer {
     // Phase 8: Testing & Debugging Features
     // ========================================================================
 
+    /// Helper to load image from either base64 or file path
+    fn load_image_from_source(
+        base64_data: Option<&str>,
+        file_path: Option<&str>,
+        name: &str,
+    ) -> Result<image::RgbaImage, String> {
+        use base64::Engine;
+
+        if let Some(path) = file_path {
+            // Load from file
+            match std::fs::read(path) {
+                Ok(bytes) => match image::load_from_memory(&bytes) {
+                    Ok(img) => Ok(img.to_rgba8()),
+                    Err(e) => Err(format!("Failed to load {} image from file: {}", name, e)),
+                },
+                Err(e) => Err(format!("Failed to read {} file '{}': {}", name, path, e)),
+            }
+        } else if let Some(b64) = base64_data {
+            // Load from base64
+            match base64::engine::general_purpose::STANDARD.decode(b64) {
+                Ok(bytes) => match image::load_from_memory(&bytes) {
+                    Ok(img) => Ok(img.to_rgba8()),
+                    Err(e) => Err(format!("Failed to load {} image: {}", name, e)),
+                },
+                Err(e) => Err(format!("Failed to decode {} base64: {}", name, e)),
+            }
+        } else {
+            Err(format!(
+                "No {} image provided. Use base64_{} or path_{}",
+                name,
+                name.chars().next().unwrap_or('a'),
+                name.chars().next().unwrap_or('a')
+            ))
+        }
+    }
+
     /// Compare two screenshots and return similarity score
     #[tool(
         description = "Compare two screenshots and return similarity score. Returns a score between 0.0 (completely different) and 1.0 (identical)."
@@ -2425,51 +2473,36 @@ impl EguiMcpServer {
         &self,
         Parameters(req): Parameters<CompareScreenshotsRequest>,
     ) -> String {
-        use base64::Engine;
-
+        let start = std::time::Instant::now();
         let algorithm = req.algorithm.as_deref().unwrap_or("hybrid");
 
-        // Decode base64 images
-        let bytes_a = match base64::engine::general_purpose::STANDARD.decode(&req.base64_a) {
-            Ok(b) => b,
+        // Load first image (prefer file path over base64)
+        let img_a = match Self::load_image_from_source(
+            req.base64_a.as_deref(),
+            req.path_a.as_deref(),
+            "first",
+        ) {
+            Ok(img) => img,
             Err(e) => {
                 return json!({
-                    "error": "decode_error",
-                    "message": format!("Failed to decode first image: {}", e)
+                    "error": "load_error",
+                    "message": e
                 })
                 .to_string();
             }
         };
 
-        let bytes_b = match base64::engine::general_purpose::STANDARD.decode(&req.base64_b) {
-            Ok(b) => b,
+        // Load second image (prefer file path over base64)
+        let img_b = match Self::load_image_from_source(
+            req.base64_b.as_deref(),
+            req.path_b.as_deref(),
+            "second",
+        ) {
+            Ok(img) => img,
             Err(e) => {
                 return json!({
-                    "error": "decode_error",
-                    "message": format!("Failed to decode second image: {}", e)
-                })
-                .to_string();
-            }
-        };
-
-        // Load images
-        let img_a = match image::load_from_memory(&bytes_a) {
-            Ok(img) => img.to_rgba8(),
-            Err(e) => {
-                return json!({
-                    "error": "image_load_error",
-                    "message": format!("Failed to load first image: {}", e)
-                })
-                .to_string();
-            }
-        };
-
-        let img_b = match image::load_from_memory(&bytes_b) {
-            Ok(img) => img.to_rgba8(),
-            Err(e) => {
-                return json!({
-                    "error": "image_load_error",
-                    "message": format!("Failed to load second image: {}", e)
+                    "error": "load_error",
+                    "message": e
                 })
                 .to_string();
             }
@@ -2515,11 +2548,15 @@ impl EguiMcpServer {
             _ => image_compare::rgba_hybrid_compare(&img_a, &img_b),
         };
 
+        let elapsed = start.elapsed();
+        tracing::info!("compare_screenshots took {:?}", elapsed);
+
         match result {
             Ok(similarity) => json!({
                 "score": similarity.score,
                 "algorithm": algorithm,
-                "dimensions": { "width": img_a.width(), "height": img_a.height() }
+                "dimensions": { "width": img_a.width(), "height": img_a.height() },
+                "elapsed_ms": elapsed.as_millis()
             })
             .to_string(),
             Err(e) => json!({
@@ -2540,54 +2577,39 @@ impl EguiMcpServer {
     ) -> Content {
         use base64::Engine;
 
-        // Decode base64 images
-        let bytes_a = match base64::engine::general_purpose::STANDARD.decode(&req.base64_a) {
-            Ok(b) => b,
+        let start = std::time::Instant::now();
+        let save_to_file = req.save_to_file.unwrap_or(false);
+
+        // Load first image (prefer file path over base64)
+        let img_a = match Self::load_image_from_source(
+            req.base64_a.as_deref(),
+            req.path_a.as_deref(),
+            "first",
+        ) {
+            Ok(img) => img,
             Err(e) => {
                 return Content::text(
                     json!({
-                        "error": "decode_error",
-                        "message": format!("Failed to decode first image: {}", e)
+                        "error": "load_error",
+                        "message": e
                     })
                     .to_string(),
                 );
             }
         };
 
-        let bytes_b = match base64::engine::general_purpose::STANDARD.decode(&req.base64_b) {
-            Ok(b) => b,
+        // Load second image (prefer file path over base64)
+        let img_b = match Self::load_image_from_source(
+            req.base64_b.as_deref(),
+            req.path_b.as_deref(),
+            "second",
+        ) {
+            Ok(img) => img,
             Err(e) => {
                 return Content::text(
                     json!({
-                        "error": "decode_error",
-                        "message": format!("Failed to decode second image: {}", e)
-                    })
-                    .to_string(),
-                );
-            }
-        };
-
-        // Load images
-        let img_a = match image::load_from_memory(&bytes_a) {
-            Ok(img) => img.to_rgba8(),
-            Err(e) => {
-                return Content::text(
-                    json!({
-                        "error": "image_load_error",
-                        "message": format!("Failed to load first image: {}", e)
-                    })
-                    .to_string(),
-                );
-            }
-        };
-
-        let img_b = match image::load_from_memory(&bytes_b) {
-            Ok(img) => img.to_rgba8(),
-            Err(e) => {
-                return Content::text(
-                    json!({
-                        "error": "image_load_error",
-                        "message": format!("Failed to load second image: {}", e)
+                        "error": "load_error",
+                        "message": e
                     })
                     .to_string(),
                 );
@@ -2653,8 +2675,37 @@ impl EguiMcpServer {
                     .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
                 {
                     Ok(()) => {
-                        let encoded = base64::engine::general_purpose::STANDARD.encode(&buf);
-                        Content::image(encoded, "image/png")
+                        let elapsed = start.elapsed();
+                        tracing::info!("diff_screenshots took {:?}", elapsed);
+
+                        if save_to_file {
+                            // Save to temp file and return path
+                            let timestamp = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis();
+                            let file_path = format!("/tmp/egui-mcp-diff-{}.png", timestamp);
+                            match std::fs::write(&file_path, &buf) {
+                                Ok(()) => Content::text(
+                                    json!({
+                                        "file_path": file_path,
+                                        "size_bytes": buf.len(),
+                                        "elapsed_ms": elapsed.as_millis()
+                                    })
+                                    .to_string(),
+                                ),
+                                Err(e) => Content::text(
+                                    json!({
+                                        "error": "write_error",
+                                        "message": format!("Failed to write diff file: {}", e)
+                                    })
+                                    .to_string(),
+                                ),
+                            }
+                        } else {
+                            let encoded = base64::engine::general_purpose::STANDARD.encode(&buf);
+                            Content::image(encoded, "image/png")
+                        }
                     }
                     Err(e) => Content::text(
                         json!({
