@@ -11,3 +11,4 @@ egui = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 base64 = { workspace = true }
+image = "0.25"

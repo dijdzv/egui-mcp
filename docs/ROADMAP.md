@@ -1,8 +1,8 @@
 # egui-mcp Roadmap
 
-## Current Status (Phase 6 Complete)
+## Current Status (Phase 7 Complete)
 
-All Phase 6 enhanced interactions have been implemented.
+All Phase 7 advanced features have been implemented.
 
 ### Implemented Tools
 
@@ -40,6 +40,14 @@ All Phase 6 enhanced interactions have been implemented.
 | `set_text_selection` | Set text selection | AT-SPI Text |
 | `get_caret_position` | Get cursor position | AT-SPI Text |
 | `set_caret_position` | Set cursor position | AT-SPI Text |
+| `is_visible` | Check if element is visible | AT-SPI State |
+| `is_enabled` | Check if element is enabled | AT-SPI State |
+| `is_focused` | Check if element has focus | AT-SPI State |
+| `is_checked` | Check toggle/checkbox state | AT-SPI State |
+| `screenshot_element` | Screenshot specific element | AT-SPI + IPC |
+| `screenshot_region` | Screenshot specific region | IPC |
+| `wait_for_element` | Wait for element to appear/disappear | Polling AT-SPI |
+| `wait_for_state` | Wait for element state change | Polling AT-SPI |
 
 ---
 
@@ -109,6 +117,7 @@ The following AT-SPI interfaces are now working:
 |-----------|-------|--------|-------|
 | Action | `click_element` | ✅ Working | |
 | Component | `get_bounds`, `focus_element`, `scroll_to_element`, `drag_element` | ✅ Working | |
+| State | `is_visible`, `is_enabled`, `is_focused`, `is_checked` | ✅ Working | |
 | Text (read) | `get_text`, `get_caret_position` | ✅ Working | Read-only operations |
 | Text (selection) | `get_text_selection`, `set_text_selection` | ✅ Working | atspi-proxies workaround (see below) |
 | Value | `get_value`, `set_value` | ✅ Working | Works in egui 0.33+ |
@@ -158,30 +167,30 @@ fn supports_selection(&self) -> bool {
 
 ---
 
-## Phase 7: Advanced Features (Future)
+## Phase 7: Advanced Features (Complete)
 
-### Wait/Polling Operations
+### State Queries ✅
 
-| Tool | Description | Method |
-|------|-------------|--------|
-| `wait_for_element` | Wait for element to appear/disappear | Polling AT-SPI |
-| `wait_for_state` | Wait for element state change | Polling AT-SPI |
+| Tool | Description | Method | Status |
+|------|-------------|--------|--------|
+| `is_visible` | Check if element is visible | AT-SPI State | ✅ Done |
+| `is_enabled` | Check if element is enabled | AT-SPI State | ✅ Done |
+| `is_focused` | Check if element has focus | AT-SPI State | ✅ Done |
+| `is_checked` | Check toggle/checkbox state | AT-SPI State | ✅ Done |
 
-### State Queries
+### Screenshot Enhancements ✅
 
-| Tool | Description | Method |
-|------|-------------|--------|
-| `is_visible` | Check if element is visible | AT-SPI State |
-| `is_enabled` | Check if element is enabled | AT-SPI State |
-| `is_focused` | Check if element has focus | AT-SPI State |
-| `is_checked` | Check toggle/checkbox state | AT-SPI State |
+| Tool | Description | Method | Status |
+|------|-------------|--------|--------|
+| `screenshot_element` | Screenshot specific element | AT-SPI + IPC (crop) | ✅ Done |
+| `screenshot_region` | Screenshot specific region | IPC (crop) | ✅ Done |
 
-### Screenshot Enhancements
+### Wait/Polling Operations ✅
 
-| Tool | Description | Method |
-|------|-------------|--------|
-| `screenshot_element` | Screenshot specific element | IPC + bounds |
-| `screenshot_region` | Screenshot specific region | IPC |
+| Tool | Description | Method | Status |
+|------|-------------|--------|--------|
+| `wait_for_element` | Wait for element to appear/disappear | Polling AT-SPI | ✅ Done |
+| `wait_for_state` | Wait for element state change | Polling AT-SPI | ✅ Done |
 
 ---
 

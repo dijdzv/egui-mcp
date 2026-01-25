@@ -289,6 +289,71 @@ struct SetCaretPositionRequest {
     offset: i32,
 }
 
+// ============================================================================
+// Phase 7: Advanced Features
+// ============================================================================
+
+/// Request for state check tools (is_visible, is_enabled, is_focused, is_checked)
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ElementIdOnlyRequest {
+    #[schemars(description = "Node ID of the element (as string)")]
+    id: String,
+}
+
+/// Request for screenshot_element tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ScreenshotElementRequest {
+    #[schemars(description = "Node ID of the element to screenshot (as string)")]
+    id: String,
+    #[schemars(
+        description = "If true, save screenshot to a temp file and return the path. If false (default), return base64-encoded data."
+    )]
+    save_to_file: Option<bool>,
+}
+
+/// Request for screenshot_region tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ScreenshotRegionRequest {
+    #[schemars(description = "X coordinate of the region")]
+    x: f32,
+    #[schemars(description = "Y coordinate of the region")]
+    y: f32,
+    #[schemars(description = "Width of the region")]
+    width: f32,
+    #[schemars(description = "Height of the region")]
+    height: f32,
+    #[schemars(
+        description = "If true, save screenshot to a temp file and return the path. If false (default), return base64-encoded data."
+    )]
+    save_to_file: Option<bool>,
+}
+
+/// Request for wait_for_element tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct WaitForElementRequest {
+    #[schemars(description = "Label pattern to match (substring match)")]
+    pattern: String,
+    #[schemars(
+        description = "If true (default), wait for element to appear. If false, wait for element to disappear."
+    )]
+    appear: Option<bool>,
+    #[schemars(description = "Timeout in milliseconds (default: 5000)")]
+    timeout_ms: Option<u64>,
+}
+
+/// Request for wait_for_state tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct WaitForStateRequest {
+    #[schemars(description = "Node ID of the element (as string)")]
+    id: String,
+    #[schemars(description = "State to wait for: 'visible', 'enabled', 'focused', or 'checked'")]
+    state: String,
+    #[schemars(description = "Expected state value (default: true)")]
+    expected: Option<bool>,
+    #[schemars(description = "Timeout in milliseconds (default: 5000)")]
+    timeout_ms: Option<u64>,
+}
+
 /// egui-mcp server handler
 #[derive(Clone)]
 struct EguiMcpServer {
@@ -1782,6 +1847,515 @@ impl EguiMcpServer {
             .to_string()
         }
     }
+
+    // ========================================================================
+    // Phase 7: Advanced Features - State Queries
+    // ========================================================================
+
+    /// Check if element is visible
+    #[tool(description = "Check if a UI element is visible. Uses AT-SPI State interface.")]
+    async fn is_visible(
+        &self,
+        Parameters(ElementIdOnlyRequest { id }): Parameters<ElementIdOnlyRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::is_visible_blocking("demo", id) {
+                Ok(visible) => json!({
+                    "id": id,
+                    "visible": visible
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "is_visible_error",
+                    "message": format!("Failed to check visibility: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            json!({
+                "error": "not_available",
+                "message": "is_visible requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Check if element is enabled
+    #[tool(description = "Check if a UI element is enabled. Uses AT-SPI State interface.")]
+    async fn is_enabled(
+        &self,
+        Parameters(ElementIdOnlyRequest { id }): Parameters<ElementIdOnlyRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::is_enabled_blocking("demo", id) {
+                Ok(enabled) => json!({
+                    "id": id,
+                    "enabled": enabled
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "is_enabled_error",
+                    "message": format!("Failed to check enabled state: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            json!({
+                "error": "not_available",
+                "message": "is_enabled requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Check if element is focused
+    #[tool(description = "Check if a UI element is focused. Uses AT-SPI State interface.")]
+    async fn is_focused(
+        &self,
+        Parameters(ElementIdOnlyRequest { id }): Parameters<ElementIdOnlyRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::is_focused_blocking("demo", id) {
+                Ok(focused) => json!({
+                    "id": id,
+                    "focused": focused
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "is_focused_error",
+                    "message": format!("Failed to check focus state: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            json!({
+                "error": "not_available",
+                "message": "is_focused requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Check if element is checked/pressed
+    #[tool(
+        description = "Check if a UI element is checked or pressed (for checkboxes, toggle buttons). Returns checked: true/false for checkable elements, or checked: null for non-checkable elements. Uses AT-SPI State interface."
+    )]
+    async fn is_checked(
+        &self,
+        Parameters(ElementIdOnlyRequest { id }): Parameters<ElementIdOnlyRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            match atspi_client::is_checked_blocking("demo", id) {
+                Ok(checked) => json!({
+                    "id": id,
+                    "checked": checked,
+                    "is_checkable": checked.is_some()
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "is_checked_error",
+                    "message": format!("Failed to check checked state: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            json!({
+                "error": "not_available",
+                "message": "is_checked requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    // ========================================================================
+    // Phase 7: Advanced Features - Screenshot Enhancements
+    // ========================================================================
+
+    /// Take screenshot of a specific element
+    #[tool(
+        description = "Take a screenshot of a specific UI element by ID. Captures the full screen and crops to element bounds."
+    )]
+    async fn screenshot_element(
+        &self,
+        Parameters(ScreenshotElementRequest { id, save_to_file }): Parameters<
+            ScreenshotElementRequest,
+        >,
+    ) -> Content {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return Content::text(
+                    json!({
+                        "error": "invalid_id",
+                        "message": "ID must be a valid unsigned integer"
+                    })
+                    .to_string(),
+                );
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        {
+            // First get element bounds
+            let bounds = match atspi_client::get_bounds_blocking("demo", id) {
+                Ok(Some(b)) => b,
+                Ok(None) => {
+                    return Content::text(json!({
+                        "error": "no_bounds",
+                        "message": "Element does not have Component interface (no bounds available)"
+                    }).to_string());
+                }
+                Err(e) => {
+                    return Content::text(
+                        json!({
+                            "error": "get_bounds_error",
+                            "message": format!("Failed to get element bounds: {}", e)
+                        })
+                        .to_string(),
+                    );
+                }
+            };
+
+            if !self.ipc_client.is_socket_available() {
+                return Content::text(
+                    json!({
+                        "error": "not_connected",
+                        "message": "No egui application socket found."
+                    })
+                    .to_string(),
+                );
+            }
+
+            // Take cropped screenshot directly from client
+            match self
+                .ipc_client
+                .take_screenshot_region(bounds.x, bounds.y, bounds.width, bounds.height)
+                .await
+            {
+                Ok((data, _format)) => {
+                    if save_to_file.unwrap_or(false) {
+                        self.save_screenshot_to_file(&data)
+                    } else {
+                        Content::image(data, "image/png")
+                    }
+                }
+                Err(e) => Content::text(
+                    json!({
+                        "error": "screenshot_error",
+                        "message": format!("Failed to take screenshot: {}", e)
+                    })
+                    .to_string(),
+                ),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (id, save_to_file);
+            Content::text(
+                json!({
+                    "error": "not_available",
+                    "message": "screenshot_element requires AT-SPI on Linux."
+                })
+                .to_string(),
+            )
+        }
+    }
+
+    /// Take screenshot of a specific region
+    #[tool(
+        description = "Take a screenshot of a specific region. Captures the full screen and crops to the specified coordinates."
+    )]
+    async fn screenshot_region(
+        &self,
+        Parameters(ScreenshotRegionRequest {
+            x,
+            y,
+            width,
+            height,
+            save_to_file,
+        }): Parameters<ScreenshotRegionRequest>,
+    ) -> Content {
+        if !self.ipc_client.is_socket_available() {
+            return Content::text(
+                json!({
+                    "error": "not_connected",
+                    "message": "No egui application socket found."
+                })
+                .to_string(),
+            );
+        }
+
+        // Take cropped screenshot directly from client
+        match self
+            .ipc_client
+            .take_screenshot_region(x, y, width, height)
+            .await
+        {
+            Ok((data, _format)) => {
+                if save_to_file.unwrap_or(false) {
+                    self.save_screenshot_to_file(&data)
+                } else {
+                    Content::image(data, "image/png")
+                }
+            }
+            Err(e) => Content::text(
+                json!({
+                    "error": "screenshot_error",
+                    "message": format!("Failed to take screenshot: {}", e)
+                })
+                .to_string(),
+            ),
+        }
+    }
+
+    // ========================================================================
+    // Phase 7: Advanced Features - Wait/Polling Operations
+    // ========================================================================
+
+    /// Wait for element to appear or disappear
+    #[tool(
+        description = "Wait for a UI element to appear or disappear. Polls every 100ms until the condition is met or timeout."
+    )]
+    async fn wait_for_element(
+        &self,
+        Parameters(WaitForElementRequest {
+            pattern,
+            appear,
+            timeout_ms,
+        }): Parameters<WaitForElementRequest>,
+    ) -> String {
+        let timeout = timeout_ms.unwrap_or(5000);
+        let appear = appear.unwrap_or(true);
+        let start = std::time::Instant::now();
+
+        #[cfg(target_os = "linux")]
+        {
+            loop {
+                let results = atspi_client::find_by_label_blocking("demo", &pattern, false);
+                let found = results.map(|r| !r.is_empty()).unwrap_or(false);
+
+                if found == appear {
+                    return json!({
+                        "success": true,
+                        "found": found,
+                        "elapsed_ms": start.elapsed().as_millis()
+                    })
+                    .to_string();
+                }
+
+                if start.elapsed().as_millis() as u64 > timeout {
+                    return json!({
+                        "success": false,
+                        "timeout": true,
+                        "found": found,
+                        "elapsed_ms": start.elapsed().as_millis()
+                    })
+                    .to_string();
+                }
+
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (pattern, appear, timeout, start);
+            json!({
+                "error": "not_available",
+                "message": "wait_for_element requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Wait for element state to change
+    #[tool(
+        description = "Wait for a UI element's state to reach an expected value. Polls every 100ms until the condition is met or timeout. Supported states: 'visible', 'enabled', 'focused', 'checked'."
+    )]
+    async fn wait_for_state(
+        &self,
+        Parameters(WaitForStateRequest {
+            id,
+            state,
+            expected,
+            timeout_ms,
+        }): Parameters<WaitForStateRequest>,
+    ) -> String {
+        let id: u64 = match id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": "ID must be a valid unsigned integer"
+                })
+                .to_string();
+            }
+        };
+
+        let timeout = timeout_ms.unwrap_or(5000);
+        let expected = expected.unwrap_or(true);
+        let start = std::time::Instant::now();
+
+        #[cfg(target_os = "linux")]
+        {
+            loop {
+                let current_state = match state.to_lowercase().as_str() {
+                    "visible" => atspi_client::is_visible_blocking("demo", id).ok(),
+                    "enabled" => atspi_client::is_enabled_blocking("demo", id).ok(),
+                    "focused" => atspi_client::is_focused_blocking("demo", id).ok(),
+                    "checked" => atspi_client::is_checked_blocking("demo", id).ok().flatten(),
+                    _ => {
+                        return json!({
+                            "error": "invalid_state",
+                            "message": format!("Unknown state: '{}'. Supported: visible, enabled, focused, checked", state)
+                        }).to_string();
+                    }
+                };
+
+                if let Some(current) = current_state
+                    && current == expected
+                {
+                    return json!({
+                        "success": true,
+                        "state": state,
+                        "value": current,
+                        "elapsed_ms": start.elapsed().as_millis()
+                    })
+                    .to_string();
+                }
+
+                if start.elapsed().as_millis() as u64 > timeout {
+                    return json!({
+                        "success": false,
+                        "timeout": true,
+                        "state": state,
+                        "current_value": current_state,
+                        "expected": expected,
+                        "elapsed_ms": start.elapsed().as_millis()
+                    })
+                    .to_string();
+                }
+
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (id, state, expected, timeout, start);
+            json!({
+                "error": "not_available",
+                "message": "wait_for_state requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+}
+
+impl EguiMcpServer {
+    /// Save base64-encoded PNG data to a temp file and return Content with file path
+    fn save_screenshot_to_file(&self, data: &str) -> Content {
+        use base64::Engine;
+
+        match base64::engine::general_purpose::STANDARD.decode(data) {
+            Ok(png_bytes) => {
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis())
+                    .unwrap_or(0);
+                let file_path = format!("/tmp/egui-mcp-screenshot-{}.png", timestamp);
+
+                match std::fs::write(&file_path, png_bytes.as_slice()) {
+                    Ok(()) => Content::text(
+                        json!({
+                            "file_path": file_path,
+                            "size_bytes": png_bytes.len()
+                        })
+                        .to_string(),
+                    ),
+                    Err(e) => Content::text(
+                        json!({
+                            "error": "file_write_error",
+                            "message": format!("Failed to write screenshot file: {}", e)
+                        })
+                        .to_string(),
+                    ),
+                }
+            }
+            Err(e) => Content::text(
+                json!({
+                    "error": "decode_error",
+                    "message": format!("Failed to decode base64 data: {}", e)
+                })
+                .to_string(),
+            ),
+        }
+    }
 }
 
 #[tool_handler]
@@ -1821,8 +2395,16 @@ impl ServerHandler for EguiMcpServer {
                  'get_text' to get text content (AT-SPI Text), \
                  'get_text_selection' to get selected text range (AT-SPI Text), \
                  'set_text_selection' to select text range (AT-SPI Text), \
-                 'get_caret_position' to get cursor position (AT-SPI Text), and \
-                 'set_caret_position' to set cursor position (AT-SPI Text)."
+                 'get_caret_position' to get cursor position (AT-SPI Text), \
+                 'set_caret_position' to set cursor position (AT-SPI Text), \
+                 'is_visible' to check if element is visible (AT-SPI State), \
+                 'is_enabled' to check if element is enabled (AT-SPI State), \
+                 'is_focused' to check if element is focused (AT-SPI State), \
+                 'is_checked' to check if element is checked/pressed (AT-SPI State), \
+                 'screenshot_element' to capture a specific element (AT-SPI + IPC), \
+                 'screenshot_region' to capture a specific region (IPC), \
+                 'wait_for_element' to wait for element to appear/disappear (AT-SPI), and \
+                 'wait_for_state' to wait for element state change (AT-SPI)."
                     .into(),
             ),
         }

@@ -188,6 +188,33 @@ impl IpcClient {
         }
     }
 
+    /// Take a screenshot of a specific region of the egui application
+    /// Returns (base64_data, format)
+    pub async fn take_screenshot_region(
+        &self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    ) -> Result<(String, String), ProtocolError> {
+        let response = self
+            .send_request(&Request::TakeScreenshotRegion {
+                x,
+                y,
+                width,
+                height,
+            })
+            .await?;
+        match response {
+            Response::Screenshot { data, format } => Ok((data, format)),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
     /// Check if the socket file exists (quick check without connecting)
     pub fn is_socket_available(&self) -> bool {
         self.socket_path.exists()

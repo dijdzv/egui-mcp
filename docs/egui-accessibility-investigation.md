@@ -17,6 +17,7 @@ egui uses [AccessKit](https://github.com/AccessKit/accesskit) to provide cross-p
 |-----------|-------|--------|-------|
 | Action | `click_element` | ✅ Working | - |
 | Component | `get_bounds`, `focus_element`, `scroll_to_element` | ✅ Working | - |
+| State | `is_visible`, `is_enabled`, `is_focused`, `is_checked` | ✅ Working | - |
 | Text (read) | `get_text`, `get_caret_position` | ✅ Working | - |
 | Text (selection) | `get_text_selection`, `set_text_selection` | ✅ Working | See [atspi-proxies-issue.md](atspi-proxies-issue.md) |
 | Text (write) | `set_caret_position` | ✅ Working | Requires focus first |
@@ -25,6 +26,37 @@ egui uses [AccessKit](https://github.com/AccessKit/accesskit) to provide cross-p
 | Selection (write) | `select_item`, `deselect_item` | ⛔ egui architecture | IPC `click_at` + `keyboard_input` |
 | Selection (bulk) | `select_all`, `clear_selection` | ➖ Not needed | egui only has single selection |
 | EditableText | `set_text` | ⛔ AccessKit limitation | IPC `keyboard_input` |
+
+---
+
+## State Interface - WORKING
+
+**Status**: ✅ Works out of the box
+
+The State interface provides boolean flags about element state. We query these via `AccessibleProxy::get_state()` which returns a `StateSet`.
+
+### Implemented Tools
+
+| Tool | State Flags Checked | Notes |
+|------|---------------------|-------|
+| `is_visible` | `Visible`, `Showing` | Returns true if either flag is set |
+| `is_enabled` | `Enabled` | Disabled elements have this flag unset |
+| `is_focused` | `Focused` | Requires element to have keyboard focus |
+| `is_checked` | `Checked`, `Pressed`, `Checkable` | Returns `Some(true)` if checked, `Some(false)` if checkable but unchecked, `None` if not checkable |
+
+### How State is Set in egui
+
+From `accesskit_atspi_common/src/node.rs`, states are derived from AccessKit node properties:
+
+```rust
+// State flags from AccessKit
+state.insert(State::Visible);  // if node has bounds
+state.insert(State::Showing);  // if visible and not clipped
+state.insert(State::Enabled);  // if not disabled
+state.insert(State::Focused);  // if focused
+state.insert(State::Checked);  // if toggled == Some(true)
+state.insert(State::Checkable); // if toggled.is_some()
+```
 
 ---
 
@@ -122,6 +154,7 @@ if role == atspi_common::Role::ComboBox {
 
 | Issue | Status | Notes |
 |-------|--------|-------|
+| State Interface | ✅ Working | Visible, Enabled, Focused, Checked |
 | Value Interface | ✅ Working | egui 0.33+ |
 | EditableText | ⛔ AccessKit limitation | Use IPC workaround |
 | Text Selection | ✅ Fixed | See [atspi-proxies-issue.md](atspi-proxies-issue.md) |

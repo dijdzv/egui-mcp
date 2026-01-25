@@ -81,6 +81,18 @@ pub enum Request {
     /// Request a screenshot of the application window
     TakeScreenshot,
 
+    /// Request a screenshot of a specific region of the application window
+    TakeScreenshotRegion {
+        /// X coordinate of the region (relative to window)
+        x: f32,
+        /// Y coordinate of the region (relative to window)
+        y: f32,
+        /// Width of the region
+        width: f32,
+        /// Height of the region
+        height: f32,
+    },
+
     /// Click at specific screen coordinates
     ClickAt {
         /// X coordinate (relative to window)

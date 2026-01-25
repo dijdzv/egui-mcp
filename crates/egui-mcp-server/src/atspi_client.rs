@@ -1,6 +1,6 @@
 //! AT-SPI client for accessing accessibility information on Linux
 
-use atspi_common::{CoordType, ObjectRef, ScrollType};
+use atspi_common::{CoordType, ObjectRef, ScrollType, State, StateSet};
 use atspi_connection::AccessibilityConnection;
 use atspi_proxies::accessible::{AccessibleProxy, ObjectRefExt};
 use egui_mcp_protocol::{NodeInfo, Rect, UiTree};
@@ -316,6 +316,58 @@ pub fn set_caret_position_blocking(app_name: &str, id: u64, offset: i32) -> Resu
         async_std::task::block_on(async {
             let client = AtspiClient::new().await?;
             client.set_caret_position(&app_name, id, offset).await
+        })
+    });
+    handle.join().unwrap()
+}
+
+// ============================================================================
+// Priority 6: State Queries (AT-SPI State)
+// ============================================================================
+
+/// Check if element is visible using AT-SPI State interface
+pub fn is_visible_blocking(app_name: &str, id: u64) -> Result<bool, BoxError> {
+    let app_name = app_name.to_string();
+    let handle = thread::spawn(move || {
+        async_std::task::block_on(async {
+            let client = AtspiClient::new().await?;
+            client.is_visible(&app_name, id).await
+        })
+    });
+    handle.join().unwrap()
+}
+
+/// Check if element is enabled using AT-SPI State interface
+pub fn is_enabled_blocking(app_name: &str, id: u64) -> Result<bool, BoxError> {
+    let app_name = app_name.to_string();
+    let handle = thread::spawn(move || {
+        async_std::task::block_on(async {
+            let client = AtspiClient::new().await?;
+            client.is_enabled(&app_name, id).await
+        })
+    });
+    handle.join().unwrap()
+}
+
+/// Check if element is focused using AT-SPI State interface
+pub fn is_focused_blocking(app_name: &str, id: u64) -> Result<bool, BoxError> {
+    let app_name = app_name.to_string();
+    let handle = thread::spawn(move || {
+        async_std::task::block_on(async {
+            let client = AtspiClient::new().await?;
+            client.is_focused(&app_name, id).await
+        })
+    });
+    handle.join().unwrap()
+}
+
+/// Check if element is checked/pressed using AT-SPI State interface
+pub fn is_checked_blocking(app_name: &str, id: u64) -> Result<Option<bool>, BoxError> {
+    let app_name = app_name.to_string();
+    let handle = thread::spawn(move || {
+        async_std::task::block_on(async {
+            let client = AtspiClient::new().await?;
+            client.is_checked(&app_name, id).await
         })
     });
     handle.join().unwrap()
@@ -1044,5 +1096,58 @@ impl AtspiClient {
 
         let result = text_proxy.set_caret_offset(offset).await?;
         Ok(result)
+    }
+
+    // ========================================================================
+    // Priority 6: State Queries (AT-SPI State)
+    // ========================================================================
+
+    /// Get element state set using AT-SPI
+    pub async fn get_element_state(&self, app_name: &str, id: u64) -> Result<StateSet, BoxError> {
+        let path_info = self.find_element_path_by_id(app_name, id).await?;
+        let Some((destination, path)) = path_info else {
+            return Err(format!("Element with id {} not found", id).into());
+        };
+
+        let accessible_proxy = AccessibleProxy::builder(self.connection.connection())
+            .destination(destination.as_str())?
+            .path(path.as_str())?
+            .build()
+            .await?;
+
+        let state_set = accessible_proxy.get_state().await?;
+        Ok(state_set)
+    }
+
+    /// Check if element is visible (Visible or Showing state)
+    pub async fn is_visible(&self, app_name: &str, id: u64) -> Result<bool, BoxError> {
+        let state = self.get_element_state(app_name, id).await?;
+        // Check for Visible or Showing state
+        Ok(state.contains(State::Visible) || state.contains(State::Showing))
+    }
+
+    /// Check if element is enabled
+    pub async fn is_enabled(&self, app_name: &str, id: u64) -> Result<bool, BoxError> {
+        let state = self.get_element_state(app_name, id).await?;
+        Ok(state.contains(State::Enabled))
+    }
+
+    /// Check if element is focused
+    pub async fn is_focused(&self, app_name: &str, id: u64) -> Result<bool, BoxError> {
+        let state = self.get_element_state(app_name, id).await?;
+        Ok(state.contains(State::Focused))
+    }
+
+    /// Check if element is checked/pressed (for checkboxes, toggle buttons)
+    /// Returns Some(true) if checked, Some(false) if checkable but not checked, None if not checkable
+    pub async fn is_checked(&self, app_name: &str, id: u64) -> Result<Option<bool>, BoxError> {
+        let state = self.get_element_state(app_name, id).await?;
+        if state.contains(State::Checked) || state.contains(State::Pressed) {
+            Ok(Some(true))
+        } else if state.contains(State::Checkable) {
+            Ok(Some(false))
+        } else {
+            Ok(None)
+        }
     }
 }
