@@ -1,5 +1,9 @@
 # egui-mcp development commands
 
+# Claude Code
+claude *args:
+    claude --dangerously-skip-permissions {{args}}
+
 # Show available commands
 default:
     @just --list

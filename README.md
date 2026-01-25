@@ -8,7 +8,7 @@ egui-mcp provides UI automation capabilities for [egui](https://github.com/emilk
 
 ## Features
 
-### Implemented
+### Working Tools
 
 | Tool | Description | Method |
 |------|-------------|--------|
@@ -18,13 +18,77 @@ egui-mcp provides UI automation capabilities for [egui](https://github.com/emilk
 | `find_by_role` | Search elements by role (Button, TextInput, etc.) | AT-SPI |
 | `get_element` | Get a specific element by ID | AT-SPI |
 | `click_element` | Click element by ID | AT-SPI Action |
-| `set_text` | Input text to text fields | AT-SPI EditableText |
+| `get_bounds` | Get element bounding box | AT-SPI Component |
+| `focus_element` | Focus element by ID | AT-SPI Component |
+| `scroll_to_element` | Scroll element into view | AT-SPI Component |
+| `drag_element` | Drag element to target | AT-SPI Component + IPC |
+| `get_text` | Get text content | AT-SPI Text |
+| `get_caret_position` | Get cursor position | AT-SPI Text ** |
+| `set_caret_position` | Set cursor position | AT-SPI Text ** |
+| `get_text_selection` | Get selected text range | AT-SPI Text ** |
+| `set_text_selection` | Set text selection | AT-SPI Text ** |
+| `get_value` | Get slider/progress value | AT-SPI Value |
+| `set_value` | Set slider value | AT-SPI Value |
+| `get_selected_count` | Get count of selected items | AT-SPI Selection * |
 | `click_at` | Click at coordinates | IPC |
+| `double_click` | Double click at coordinates | IPC |
+| `hover` | Move mouse to coordinates | IPC |
+| `drag` | Drag from point A to point B | IPC |
 | `keyboard_input` | Send keyboard input | IPC |
-| `scroll` | Scroll operation | IPC |
+| `scroll` | Scroll at coordinates | IPC |
 | `take_screenshot` | Capture application screenshot | IPC |
 | `ping` | Verify server is running | - |
 | `check_connection` | Check connection to egui app | IPC |
+| `is_visible` | Check if element is visible | AT-SPI State |
+| `is_enabled` | Check if element is enabled | AT-SPI State |
+| `is_focused` | Check if element has focus | AT-SPI State |
+| `is_checked` | Check toggle/checkbox state | AT-SPI State |
+| `screenshot_element` | Screenshot specific element | AT-SPI + IPC |
+| `screenshot_region` | Screenshot specific region | IPC |
+| `wait_for_element` | Wait for element to appear/disappear | Polling AT-SPI |
+| `wait_for_state` | Wait for element state change | Polling AT-SPI |
+| `compare_screenshots` | Compare two screenshots (similarity score) | Server |
+| `diff_screenshots` | Generate visual diff image | Server |
+| `highlight_element` | Draw highlight overlay on element | AT-SPI + IPC |
+| `clear_highlights` | Remove all highlights | IPC |
+| `save_snapshot` | Save current UI tree state | AT-SPI |
+| `load_snapshot` | Load a saved snapshot | Memory |
+| `diff_snapshots` | Compare two saved snapshots | Memory |
+| `diff_current` | Compare current state with snapshot | AT-SPI + Memory |
+| `get_frame_stats` | Get FPS and frame timing | IPC *** |
+| `start_perf_recording` | Start recording performance | IPC *** |
+| `get_perf_report` | Get performance report with percentiles | IPC *** |
+| `get_logs` | Get recent log entries | IPC **** |
+| `clear_logs` | Clear log buffer | IPC **** |
+
+> \* For ComboBox, checks the name property to determine if something is selected (returns 0 or 1).
+>
+> \*\* These tools require the element to have focus first. Use `focus_element` before calling. Returns -1 if no focus.
+>
+> \*\*\* Requires the egui app to call `record_frame_auto()`. See [Performance Metrics](#performance-metrics).
+>
+> \*\*\*\* Requires the egui app to be configured with `McpLogLayer`. See [Log Access](#log-access).
+
+### Not Working (Limitation)
+
+The following tools are implemented but **do not work** due to various limitations:
+
+| Tool | AT-SPI Interface | Issue | Workaround |
+|------|------------------|-------|------------|
+| `set_text` | EditableText | AccessKit doesn't implement EditableText interface | Use `keyboard_input` |
+| `select_item` | Selection | egui ComboBox doesn't expose child items to AccessKit | Use `click_at` + `keyboard_input` |
+| `deselect_item` | Selection | Same as above | Same as above |
+
+### Not Needed
+
+The following tools are implemented but not useful for egui:
+
+| Tool | Reason |
+|------|--------|
+| `select_all` | egui only has ComboBox and RadioGroup (single selection) |
+| `clear_selection` | Same as above |
+
+> **Note**: See [docs/egui-accessibility-investigation.md](docs/egui-accessibility-investigation.md) for detailed analysis of each limitation.
 
 ## Architecture
 
@@ -130,19 +194,87 @@ Add the server to your MCP client's configuration. The format depends on your MC
 
 Once connected, the following MCP tools are available:
 
+**Connection & Info:**
 - **`ping`** - Check if server is running
 - **`check_connection`** - Verify connection to egui application
+
+**UI Tree (AT-SPI):**
 - **`get_ui_tree`** - Get complete UI structure as JSON
 - **`find_by_label`** - Find elements containing a label substring
 - **`find_by_label_exact`** - Find elements with exact label match
 - **`find_by_role`** - Find elements by role (Button, TextInput, CheckBox, etc.)
 - **`get_element`** - Get element details by ID
+
+**Element Interaction (AT-SPI):**
 - **`click_element`** - Click an element by ID (AT-SPI Action)
 - **`set_text`** - Set text content of a text input by ID (AT-SPI EditableText)
-- **`click_at`** - Click at specific coordinates (IPC)
-- **`keyboard_input`** - Send keyboard input (IPC)
-- **`scroll`** - Scroll at specific coordinates (IPC)
-- **`take_screenshot`** - Capture screenshot (IPC, returns base64 PNG)
+
+**Coordinate-based Input (IPC):**
+- **`click_at`** - Click at specific coordinates
+- **`double_click`** - Double click at specific coordinates
+- **`hover`** - Move mouse to specific coordinates
+- **`drag`** - Drag from point A to point B
+- **`keyboard_input`** - Send keyboard input
+- **`scroll`** - Scroll at specific coordinates
+
+**Screenshot (IPC):**
+- **`take_screenshot`** - Capture screenshot (returns ImageContent or saves to file)
+
+> See [Features](#features) for tools that are not working due to egui limitations.
+
+### Performance Metrics
+
+To enable performance metrics (`get_frame_stats`, `start_perf_recording`, `get_perf_report`), call `record_frame_auto()` in your egui app's update loop:
+
+```rust
+impl eframe::App for MyApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // ... your UI code ...
+
+        // Record frame for performance metrics (1 line only!)
+        self.runtime.block_on(self.mcp_client.record_frame_auto());
+    }
+}
+```
+
+### Log Access
+
+To enable log access (`get_logs`, `clear_logs`), configure `McpLogLayer` with tracing:
+
+```rust
+use egui_mcp_client::{McpClient, McpLogLayer};
+use tracing_subscriber::prelude::*;
+
+fn main() {
+    // Set up MCP log layer (captures logs for MCP access)
+    let (mcp_layer, log_buffer) = McpLogLayer::new(1000); // Keep last 1000 entries
+
+    tracing_subscriber::registry()
+        .with(mcp_layer)                           // Capture logs for MCP
+        .with(tracing_subscriber::fmt::layer())    // Also log to stdout
+        .init();
+
+    // Pass log buffer to MCP client
+    let mcp_client = McpClient::new().with_log_buffer_sync(log_buffer);
+    // ... run egui app
+}
+```
+
+### Element Highlight
+
+To enable element highlighting (`highlight_element`, `clear_highlights`), call `draw_highlights()` at the end of your update loop:
+
+```rust
+impl eframe::App for MyApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // ... your UI code ...
+
+        // Draw highlights at the end
+        let highlights = self.runtime.block_on(self.mcp_client.get_highlights());
+        egui_mcp_client::draw_highlights(ctx, &highlights);
+    }
+}
+```
 
 ## Development
 

@@ -2,25 +2,34 @@
 //!
 //! This app demonstrates integration with egui-mcp-client for:
 //! - Screenshots
-//! - (Future) Coordinate-based input
+//! - Coordinate-based input (click, hover, drag)
+//! - Keyboard input
+//! - Scroll events
 //!
 //! Note: UI tree access is handled via AT-SPI on the server side
 //! and doesn't require any special code in the egui application.
 
 use eframe::egui;
-use egui_mcp_client::McpClient;
+use egui_mcp_client::{McpClient, McpLogLayer, MouseButton, PendingInput};
 use image::ImageEncoder;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
+use tracing_subscriber::prelude::*;
 
 fn main() -> eframe::Result<()> {
-    tracing_subscriber::fmt::init();
+    // Set up MCP log layer for log capture
+    let (mcp_layer, log_buffer) = McpLogLayer::new(1000);
+
+    tracing_subscriber::registry()
+        .with(mcp_layer)
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 
     // Create tokio runtime for async operations
     let runtime = Arc::new(Runtime::new().expect("Failed to create tokio runtime"));
 
-    // Create MCP client
-    let mcp_client = McpClient::new();
+    // Create MCP client with log buffer
+    let mcp_client = McpClient::new().with_log_buffer_sync(log_buffer);
 
     // Start IPC server in background
     let client_clone = mcp_client.clone();
@@ -37,7 +46,7 @@ fn main() -> eframe::Result<()> {
     );
 
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([400.0, 300.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([500.0, 600.0]),
         ..Default::default()
     };
 
@@ -54,6 +63,17 @@ struct DemoApp {
     checkbox_value: bool,
     mcp_client: McpClient,
     runtime: Arc<Runtime>,
+    // Input state for visualization
+    last_mouse_pos: Option<(f32, f32)>,
+    last_click: Option<(f32, f32, String)>,
+    last_double_click: Option<(f32, f32, String)>,
+    last_drag: Option<((f32, f32), (f32, f32))>,
+    last_key: Option<String>,
+    last_scroll: Option<(f32, f32, f32, f32)>,
+    // Phase 6 test elements
+    slider_value: f64,
+    selected_item: usize,
+    multi_line_text: String,
 }
 
 impl DemoApp {
@@ -67,6 +87,16 @@ impl DemoApp {
             checkbox_value: false,
             mcp_client,
             runtime,
+            last_mouse_pos: None,
+            last_click: None,
+            last_double_click: None,
+            last_drag: None,
+            last_key: None,
+            last_scroll: None,
+            // Phase 6 test elements
+            slider_value: 50.0,
+            selected_item: 0,
+            multi_line_text: "Hello, World!\nThis is a test.\nEdit me!".to_string(),
         }
     }
 
@@ -96,7 +126,64 @@ impl DemoApp {
 }
 
 impl eframe::App for DemoApp {
+    /// Hook to inject MCP inputs as egui events before processing
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        let inputs = self.runtime.block_on(self.mcp_client.take_pending_inputs());
+
+        // Update visualization state before injecting
+        for input in &inputs {
+            match input {
+                PendingInput::MoveMouse { x, y } => {
+                    self.last_mouse_pos = Some((*x, *y));
+                }
+                PendingInput::Click { x, y, button } => {
+                    let button_name = match button {
+                        MouseButton::Left => "left",
+                        MouseButton::Right => "right",
+                        MouseButton::Middle => "middle",
+                    };
+                    self.last_click = Some((*x, *y, button_name.to_string()));
+                }
+                PendingInput::DoubleClick { x, y, button } => {
+                    let button_name = match button {
+                        MouseButton::Left => "left",
+                        MouseButton::Right => "right",
+                        MouseButton::Middle => "middle",
+                    };
+                    self.last_double_click = Some((*x, *y, button_name.to_string()));
+                }
+                PendingInput::Drag {
+                    start_x,
+                    start_y,
+                    end_x,
+                    end_y,
+                    ..
+                } => {
+                    self.last_drag = Some(((*start_x, *start_y), (*end_x, *end_y)));
+                }
+                PendingInput::Keyboard { key } => {
+                    self.last_key = Some(key.clone());
+                }
+                PendingInput::Scroll {
+                    x,
+                    y,
+                    delta_x,
+                    delta_y,
+                } => {
+                    self.last_scroll = Some((*x, *y, *delta_x, *delta_y));
+                }
+            }
+        }
+
+        // Use the helper to inject inputs into egui
+        egui_mcp_client::inject_inputs(ctx, raw_input, inputs);
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Request periodic repaint to handle MCP inputs even when window is in background
+        // This ensures raw_input_hook is called regularly to process pending inputs
+        ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60fps for responsive MCP input
+
         // Check if screenshot is requested and send viewport command
         let screenshot_requested = self
             .runtime
@@ -157,6 +244,103 @@ impl eframe::App for DemoApp {
                     &self.name
                 }
             ));
+
+            // Phase 6: Value Interface Test (Slider)
+            ui.separator();
+            ui.heading("Phase 6 Test Elements");
+
+            ui.horizontal(|ui| {
+                ui.label("Slider (Value):");
+                ui.add(egui::Slider::new(&mut self.slider_value, 0.0..=100.0).text("value"));
+            });
+
+            // Phase 6: Selection Interface Test (ComboBox)
+            let items = ["Item A", "Item B", "Item C", "Item D"];
+            ui.horizontal(|ui| {
+                ui.label("ComboBox (Selection):");
+                egui::ComboBox::from_label("")
+                    .selected_text(items[self.selected_item])
+                    .show_ui(ui, |ui| {
+                        for (idx, item) in items.iter().enumerate() {
+                            ui.selectable_value(&mut self.selected_item, idx, *item);
+                        }
+                    });
+            });
+
+            // Phase 6: Text Interface Test (Multiline TextEdit)
+            ui.label("TextArea (Text Interface):");
+            ui.add(
+                egui::TextEdit::multiline(&mut self.multi_line_text)
+                    .desired_rows(3)
+                    .desired_width(f32::INFINITY),
+            );
+
+            // MCP Input Visualization Section
+            ui.separator();
+            ui.heading("MCP Input Monitor");
+
+            egui::Grid::new("mcp_input_grid")
+                .num_columns(2)
+                .spacing([20.0, 4.0])
+                .show(ui, |ui| {
+                    ui.label("Mouse Position:");
+                    if let Some((x, y)) = self.last_mouse_pos {
+                        ui.label(format!("({:.1}, {:.1})", x, y));
+                    } else {
+                        ui.label("-");
+                    }
+                    ui.end_row();
+
+                    ui.label("Last Click:");
+                    if let Some((x, y, button)) = &self.last_click {
+                        ui.label(format!("({:.1}, {:.1}) [{}]", x, y, button));
+                    } else {
+                        ui.label("-");
+                    }
+                    ui.end_row();
+
+                    ui.label("Last Double Click:");
+                    if let Some((x, y, button)) = &self.last_double_click {
+                        ui.label(format!("({:.1}, {:.1}) [{}]", x, y, button));
+                    } else {
+                        ui.label("-");
+                    }
+                    ui.end_row();
+
+                    ui.label("Last Drag:");
+                    if let Some(((sx, sy), (ex, ey))) = self.last_drag {
+                        ui.label(format!("({:.1}, {:.1}) → ({:.1}, {:.1})", sx, sy, ex, ey));
+                    } else {
+                        ui.label("-");
+                    }
+                    ui.end_row();
+
+                    ui.label("Last Key:");
+                    if let Some(key) = &self.last_key {
+                        ui.label(format!("'{}'", key));
+                    } else {
+                        ui.label("-");
+                    }
+                    ui.end_row();
+
+                    ui.label("Last Scroll:");
+                    if let Some((x, y, dx, dy)) = self.last_scroll {
+                        ui.label(format!(
+                            "at ({:.1}, {:.1}) delta ({:.1}, {:.1})",
+                            x, y, dx, dy
+                        ));
+                    } else {
+                        ui.label("-");
+                    }
+                    ui.end_row();
+                });
         });
+
+        // Draw MCP highlights on top of UI
+        let highlights = self.runtime.block_on(self.mcp_client.get_highlights());
+        egui_mcp_client::draw_highlights(ctx, &highlights);
+
+        // Record frame for performance metrics (1行だけ！)
+        self.runtime.block_on(self.mcp_client.record_frame_auto());
     }
 }

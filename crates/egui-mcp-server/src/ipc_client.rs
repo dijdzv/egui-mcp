@@ -8,11 +8,9 @@
 //!
 //! Note: UI tree access and element-based interactions are handled via AT-SPI.
 
-#![allow(dead_code)] // move_mouse and drag methods will be used when MCP tools are added
-
 use egui_mcp_protocol::{
-    MouseButton, ProtocolError, Request, Response, default_socket_path, read_response,
-    write_request,
+    FrameStats, LogEntry, MouseButton, PerfReport, ProtocolError, Request, Response,
+    default_socket_path, read_response, write_request,
 };
 use std::path::PathBuf;
 use tokio::net::UnixStream;
@@ -170,9 +168,172 @@ impl IpcClient {
         }
     }
 
+    /// Double click at specific coordinates
+    pub async fn double_click(
+        &self,
+        x: f32,
+        y: f32,
+        button: MouseButton,
+    ) -> Result<(), ProtocolError> {
+        let response = self
+            .send_request(&Request::DoubleClick { x, y, button })
+            .await?;
+        match response {
+            Response::Success => Ok(()),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
+    /// Take a screenshot of a specific region of the egui application
+    /// Returns (base64_data, format)
+    pub async fn take_screenshot_region(
+        &self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    ) -> Result<(String, String), ProtocolError> {
+        let response = self
+            .send_request(&Request::TakeScreenshotRegion {
+                x,
+                y,
+                width,
+                height,
+            })
+            .await?;
+        match response {
+            Response::Screenshot { data, format } => Ok((data, format)),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
+    /// Highlight an element with a colored border
+    pub async fn highlight_element(
+        &self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        color: [u8; 4],
+        duration_ms: u64,
+    ) -> Result<(), ProtocolError> {
+        let response = self
+            .send_request(&Request::HighlightElement {
+                x,
+                y,
+                width,
+                height,
+                color,
+                duration_ms,
+            })
+            .await?;
+        match response {
+            Response::Success => Ok(()),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
+    /// Clear all highlights
+    pub async fn clear_highlights(&self) -> Result<(), ProtocolError> {
+        let response = self.send_request(&Request::ClearHighlights).await?;
+        match response {
+            Response::Success => Ok(()),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
     /// Check if the socket file exists (quick check without connecting)
     pub fn is_socket_available(&self) -> bool {
         self.socket_path.exists()
+    }
+
+    /// Get log entries from the egui application
+    pub async fn get_logs(
+        &self,
+        level: Option<String>,
+        limit: Option<usize>,
+    ) -> Result<Vec<LogEntry>, ProtocolError> {
+        let response = self
+            .send_request(&Request::GetLogs { level, limit })
+            .await?;
+        match response {
+            Response::Logs { entries } => Ok(entries),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
+    /// Clear all logs in the egui application
+    pub async fn clear_logs(&self) -> Result<(), ProtocolError> {
+        let response = self.send_request(&Request::ClearLogs).await?;
+        match response {
+            Response::Success => Ok(()),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
+    /// Get current frame statistics
+    pub async fn get_frame_stats(&self) -> Result<FrameStats, ProtocolError> {
+        let response = self.send_request(&Request::GetFrameStats).await?;
+        match response {
+            Response::FrameStatsResponse { stats } => Ok(stats),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
+    /// Start recording performance data
+    pub async fn start_perf_recording(&self, duration_ms: u64) -> Result<(), ProtocolError> {
+        let response = self
+            .send_request(&Request::StartPerfRecording { duration_ms })
+            .await?;
+        match response {
+            Response::Success => Ok(()),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
+    }
+
+    /// Get performance report (stops recording)
+    pub async fn get_perf_report(&self) -> Result<Option<PerfReport>, ProtocolError> {
+        let response = self.send_request(&Request::GetPerfReport).await?;
+        match response {
+            Response::PerfReportResponse { report } => Ok(report),
+            Response::Error { message } => Err(ProtocolError::Io(std::io::Error::other(message))),
+            _ => Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unexpected response",
+            ))),
+        }
     }
 }
 
