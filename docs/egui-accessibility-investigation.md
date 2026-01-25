@@ -1,4 +1,4 @@
-# egui Accessibility Analysis for AT-SPI
+# egui Accessibility Investigation
 
 This document describes AT-SPI accessibility behavior in egui and documents our investigation findings.
 
@@ -18,7 +18,7 @@ egui uses [AccessKit](https://github.com/AccessKit/accesskit) to provide cross-p
 | Action | `click_element` | ✅ Working | - |
 | Component | `get_bounds`, `focus_element`, `scroll_to_element` | ✅ Working | - |
 | Text (read) | `get_text`, `get_caret_position` | ✅ Working | - |
-| Text (selection) | `get_text_selection`, `set_text_selection` | ✅ Working | atspi-proxies workaround |
+| Text (selection) | `get_text_selection`, `set_text_selection` | ✅ Working | See [atspi-proxies-issue.md](atspi-proxies-issue.md) |
 | Text (write) | `set_caret_position` | ✅ Working | Requires focus first |
 | Value | `get_value`, `set_value` | ✅ Working | Works in egui 0.33+ |
 | Selection (read) | `get_selected_count` | ✅ Working | ComboBox uses name property |
@@ -75,43 +75,6 @@ The Value interface works out of the box with egui 0.33+.
 
 ---
 
-## Text Selection - FIXED (atspi-proxies bug)
-
-**Symptom**: `get_text_selection`, `set_text_selection` fail with "Unknown method 'GetNselections'"
-
-**Root Cause**: **Bug in atspi-proxies 0.9.0** - method name case mismatch.
-
-### Investigation Results
-
-1. **AT-SPI specification**: `GetNSelections` (capital S)
-2. **atspi-proxies**: `GetNselections` (lowercase s)
-3. **egui already implements Text Selection** via `set_text_selection()` in AccessKit
-
-### Fix
-
-In egui-mcp-server, we call D-Bus method directly with correct name:
-
-```rust
-// Instead of:
-let n_selections = text_proxy.get_nselections().await?;
-
-// We use:
-let n_selections: i32 = text_proxy
-    .inner()
-    .call_method("GetNSelections", &())
-    .await?
-    .body()
-    .deserialize()?;
-```
-
-**Status**: ✅ Fixed (in egui-mcp-server, not egui)
-
-### Future: Workaround Will Become Unnecessary
-
-This workaround will become unnecessary when egui merges [PR #7850](https://github.com/emilk/egui/pull/7850), which updates `atspi` from 0.25.0 to 0.28.0. The newer atspi-proxies version (0.10+) includes the fix for the method name case mismatch ([odilia-app/atspi#239](https://github.com/odilia-app/atspi/pull/239)).
-
----
-
 ## Selection Interface (ComboBox) - NOT FIXABLE IN EGUI (Architecture)
 
 **Symptom**: Selection methods fail because ComboBox has no child items visible to AT-SPI.
@@ -161,7 +124,7 @@ if role == atspi_common::Role::ComboBox {
 |-------|--------|-------|
 | Value Interface | ✅ Working | egui 0.33+ |
 | EditableText | ⛔ AccessKit limitation | Use IPC workaround |
-| Text Selection | ✅ Fixed | atspi-proxies workaround in egui-mcp-server |
+| Text Selection | ✅ Fixed | See [atspi-proxies-issue.md](atspi-proxies-issue.md) |
 | Selection (read) | ✅ Fixed | ComboBox uses name property |
 | Selection (write) | ⛔ egui architecture | Use IPC workaround |
 
@@ -198,4 +161,4 @@ accerciser
 - [egui Issue #167 - Accessibility (A11y)](https://github.com/emilk/egui/issues/167)
 - [AccessKit Repository](https://github.com/AccessKit/accesskit)
 - [AT-SPI Documentation](https://www.freedesktop.org/wiki/Accessibility/AT-SPI2/)
-- [odilia-app/atspi#239 - ProxyExt fix](https://github.com/odilia-app/atspi/pull/239) - Fixes proxy conversion bug
+- [atspi-proxies issue](atspi-proxies-issue.md) - D-Bus proxy and method name bugs

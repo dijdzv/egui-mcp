@@ -128,7 +128,7 @@ The following AT-SPI interfaces are now working:
 |-------|--------|
 | `select_all`, `clear_selection` | egui only has ComboBox and RadioGroup (single selection) |
 
-> **Note**: See [egui-accessibility-pr.md](egui-accessibility-pr.md) for detailed analysis of each limitation.
+> **Note**: See [egui-accessibility-investigation.md](egui-accessibility-investigation.md) for detailed analysis of each limitation.
 
 ### Workarounds and Future Fixes
 

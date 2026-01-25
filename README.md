@@ -63,7 +63,7 @@ The following tools are implemented but not useful for egui:
 | `select_all` | egui only has ComboBox and RadioGroup (single selection) |
 | `clear_selection` | Same as above |
 
-> **Note**: See [docs/egui-accessibility-pr.md](docs/egui-accessibility-pr.md) for detailed analysis of each limitation.
+> **Note**: See [docs/egui-accessibility-investigation.md](docs/egui-accessibility-investigation.md) for detailed analysis of each limitation.
 
 ## Architecture
 
