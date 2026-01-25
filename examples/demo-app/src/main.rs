@@ -10,19 +10,26 @@
 //! and doesn't require any special code in the egui application.
 
 use eframe::egui;
-use egui_mcp_client::{McpClient, MouseButton, PendingInput};
+use egui_mcp_client::{McpClient, McpLogLayer, MouseButton, PendingInput};
 use image::ImageEncoder;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
+use tracing_subscriber::prelude::*;
 
 fn main() -> eframe::Result<()> {
-    tracing_subscriber::fmt::init();
+    // Set up MCP log layer for log capture
+    let (mcp_layer, log_buffer) = McpLogLayer::new(1000);
+
+    tracing_subscriber::registry()
+        .with(mcp_layer)
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 
     // Create tokio runtime for async operations
     let runtime = Arc::new(Runtime::new().expect("Failed to create tokio runtime"));
 
-    // Create MCP client
-    let mcp_client = McpClient::new();
+    // Create MCP client with log buffer
+    let mcp_client = McpClient::new().with_log_buffer_sync(log_buffer);
 
     // Start IPC server in background
     let client_clone = mcp_client.clone();
@@ -328,5 +335,12 @@ impl eframe::App for DemoApp {
                     ui.end_row();
                 });
         });
+
+        // Draw MCP highlights on top of UI
+        let highlights = self.runtime.block_on(self.mcp_client.get_highlights());
+        egui_mcp_client::draw_highlights(ctx, &highlights);
+
+        // Record frame for performance metrics (1行だけ！)
+        self.runtime.block_on(self.mcp_client.record_frame_auto());
     }
 }

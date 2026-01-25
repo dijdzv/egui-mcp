@@ -354,20 +354,117 @@ struct WaitForStateRequest {
     timeout_ms: Option<u64>,
 }
 
+// ============================================================================
+// Phase 8: Testing & Debugging Features
+// ============================================================================
+
+/// Request for compare_screenshots tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct CompareScreenshotsRequest {
+    #[schemars(description = "First screenshot as base64-encoded PNG")]
+    base64_a: String,
+    #[schemars(description = "Second screenshot as base64-encoded PNG")]
+    base64_b: String,
+    #[schemars(
+        description = "Comparison algorithm: 'hybrid' (default), 'mssim' (structural), 'rms' (pixel-wise)"
+    )]
+    algorithm: Option<String>,
+}
+
+/// Request for diff_screenshots tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct DiffScreenshotsRequest {
+    #[schemars(description = "First screenshot as base64-encoded PNG")]
+    base64_a: String,
+    #[schemars(description = "Second screenshot as base64-encoded PNG")]
+    base64_b: String,
+}
+
+/// Request for highlight_element tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct HighlightElementRequest {
+    #[schemars(description = "Node ID of the element to highlight (as string)")]
+    id: String,
+    #[schemars(
+        description = "Highlight color as hex string (e.g., '#ff0000' or '#ff000080' with alpha). Default: red"
+    )]
+    color: Option<String>,
+    #[schemars(
+        description = "Duration in milliseconds. 0 = highlight until cleared. Default: 3000"
+    )]
+    duration_ms: Option<u64>,
+}
+
+/// Request for save_snapshot tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct SaveSnapshotRequest {
+    #[schemars(description = "Name to identify this snapshot")]
+    name: String,
+}
+
+/// Request for load_snapshot tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct LoadSnapshotRequest {
+    #[schemars(description = "Name of the snapshot to load")]
+    name: String,
+}
+
+/// Request for diff_snapshots tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct DiffSnapshotsRequest {
+    #[schemars(description = "Name of the first snapshot")]
+    name_a: String,
+    #[schemars(description = "Name of the second snapshot")]
+    name_b: String,
+}
+
+/// Request for diff_current tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct DiffCurrentRequest {
+    #[schemars(description = "Name of the snapshot to compare with current state")]
+    name: String,
+}
+
+/// Request for get_logs tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct GetLogsRequest {
+    #[schemars(
+        description = "Minimum log level to return: 'TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR'. If omitted, returns all levels."
+    )]
+    level: Option<String>,
+    #[schemars(description = "Maximum number of entries to return (default: all)")]
+    limit: Option<usize>,
+}
+
+/// Request for start_perf_recording tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct StartPerfRecordingRequest {
+    #[schemars(
+        description = "Duration to record in milliseconds. 0 = until get_perf_report is called (default: 0)"
+    )]
+    duration_ms: Option<u64>,
+}
+
+/// Stored snapshot data (serialized UiTree)
+type SnapshotStore = Arc<std::sync::RwLock<std::collections::HashMap<String, String>>>;
+
 /// egui-mcp server handler
 #[derive(Clone)]
 struct EguiMcpServer {
     tool_router: ToolRouter<Self>,
     ipc_client: Arc<IpcClient>,
+    snapshots: SnapshotStore,
 }
 
 impl EguiMcpServer {
     fn new() -> Self {
         let tool_router = Self::tool_router();
         let ipc_client = Arc::new(IpcClient::new());
+        let snapshots = Arc::new(std::sync::RwLock::new(std::collections::HashMap::new()));
         Self {
             tool_router,
             ipc_client,
+            snapshots,
         }
     }
 }
@@ -2315,6 +2412,849 @@ impl EguiMcpServer {
             .to_string()
         }
     }
+
+    // ========================================================================
+    // Phase 8: Testing & Debugging Features
+    // ========================================================================
+
+    /// Compare two screenshots and return similarity score
+    #[tool(
+        description = "Compare two screenshots and return similarity score. Returns a score between 0.0 (completely different) and 1.0 (identical)."
+    )]
+    async fn compare_screenshots(
+        &self,
+        Parameters(req): Parameters<CompareScreenshotsRequest>,
+    ) -> String {
+        use base64::Engine;
+
+        let algorithm = req.algorithm.as_deref().unwrap_or("hybrid");
+
+        // Decode base64 images
+        let bytes_a = match base64::engine::general_purpose::STANDARD.decode(&req.base64_a) {
+            Ok(b) => b,
+            Err(e) => {
+                return json!({
+                    "error": "decode_error",
+                    "message": format!("Failed to decode first image: {}", e)
+                })
+                .to_string();
+            }
+        };
+
+        let bytes_b = match base64::engine::general_purpose::STANDARD.decode(&req.base64_b) {
+            Ok(b) => b,
+            Err(e) => {
+                return json!({
+                    "error": "decode_error",
+                    "message": format!("Failed to decode second image: {}", e)
+                })
+                .to_string();
+            }
+        };
+
+        // Load images
+        let img_a = match image::load_from_memory(&bytes_a) {
+            Ok(img) => img.to_rgba8(),
+            Err(e) => {
+                return json!({
+                    "error": "image_load_error",
+                    "message": format!("Failed to load first image: {}", e)
+                })
+                .to_string();
+            }
+        };
+
+        let img_b = match image::load_from_memory(&bytes_b) {
+            Ok(img) => img.to_rgba8(),
+            Err(e) => {
+                return json!({
+                    "error": "image_load_error",
+                    "message": format!("Failed to load second image: {}", e)
+                })
+                .to_string();
+            }
+        };
+
+        // Check dimensions match
+        if img_a.dimensions() != img_b.dimensions() {
+            return json!({
+                "error": "dimension_mismatch",
+                "message": format!(
+                    "Image dimensions don't match: {:?} vs {:?}",
+                    img_a.dimensions(),
+                    img_b.dimensions()
+                ),
+                "dimensions_a": { "width": img_a.width(), "height": img_a.height() },
+                "dimensions_b": { "width": img_b.width(), "height": img_b.height() }
+            })
+            .to_string();
+        }
+
+        // Compare images based on algorithm
+        let result = match algorithm {
+            "mssim" => {
+                // MSSIM comparison using gray images
+                let gray_a = image::DynamicImage::ImageRgba8(img_a.clone()).to_luma8();
+                let gray_b = image::DynamicImage::ImageRgba8(img_b.clone()).to_luma8();
+                image_compare::gray_similarity_structure(
+                    &image_compare::Algorithm::MSSIMSimple,
+                    &gray_a,
+                    &gray_b,
+                )
+            }
+            "rms" => {
+                // RMS comparison using gray images
+                let gray_a = image::DynamicImage::ImageRgba8(img_a.clone()).to_luma8();
+                let gray_b = image::DynamicImage::ImageRgba8(img_b.clone()).to_luma8();
+                image_compare::gray_similarity_structure(
+                    &image_compare::Algorithm::RootMeanSquared,
+                    &gray_a,
+                    &gray_b,
+                )
+            }
+            _ => image_compare::rgba_hybrid_compare(&img_a, &img_b),
+        };
+
+        match result {
+            Ok(similarity) => json!({
+                "score": similarity.score,
+                "algorithm": algorithm,
+                "dimensions": { "width": img_a.width(), "height": img_a.height() }
+            })
+            .to_string(),
+            Err(e) => json!({
+                "error": "comparison_error",
+                "message": format!("Failed to compare images: {}", e)
+            })
+            .to_string(),
+        }
+    }
+
+    /// Generate a visual diff image highlighting differences between two screenshots
+    #[tool(
+        description = "Generate a visual diff image highlighting differences between two screenshots. Returns the diff image as base64-encoded PNG."
+    )]
+    async fn diff_screenshots(
+        &self,
+        Parameters(req): Parameters<DiffScreenshotsRequest>,
+    ) -> Content {
+        use base64::Engine;
+
+        // Decode base64 images
+        let bytes_a = match base64::engine::general_purpose::STANDARD.decode(&req.base64_a) {
+            Ok(b) => b,
+            Err(e) => {
+                return Content::text(
+                    json!({
+                        "error": "decode_error",
+                        "message": format!("Failed to decode first image: {}", e)
+                    })
+                    .to_string(),
+                );
+            }
+        };
+
+        let bytes_b = match base64::engine::general_purpose::STANDARD.decode(&req.base64_b) {
+            Ok(b) => b,
+            Err(e) => {
+                return Content::text(
+                    json!({
+                        "error": "decode_error",
+                        "message": format!("Failed to decode second image: {}", e)
+                    })
+                    .to_string(),
+                );
+            }
+        };
+
+        // Load images
+        let img_a = match image::load_from_memory(&bytes_a) {
+            Ok(img) => img.to_rgba8(),
+            Err(e) => {
+                return Content::text(
+                    json!({
+                        "error": "image_load_error",
+                        "message": format!("Failed to load first image: {}", e)
+                    })
+                    .to_string(),
+                );
+            }
+        };
+
+        let img_b = match image::load_from_memory(&bytes_b) {
+            Ok(img) => img.to_rgba8(),
+            Err(e) => {
+                return Content::text(
+                    json!({
+                        "error": "image_load_error",
+                        "message": format!("Failed to load second image: {}", e)
+                    })
+                    .to_string(),
+                );
+            }
+        };
+
+        // Check dimensions match
+        if img_a.dimensions() != img_b.dimensions() {
+            return Content::text(
+                json!({
+                    "error": "dimension_mismatch",
+                    "message": format!(
+                        "Image dimensions don't match: {:?} vs {:?}",
+                        img_a.dimensions(),
+                        img_b.dimensions()
+                    )
+                })
+                .to_string(),
+            );
+        }
+
+        // Compare and get diff image
+        let result = image_compare::rgba_hybrid_compare(&img_a, &img_b);
+
+        match result {
+            Ok(comparison) => {
+                // Convert the similarity image to a color map (DynamicImage)
+                let diff_dynamic = comparison.image.to_color_map();
+                let diff_rgba = diff_dynamic.to_rgba8();
+                let (width, height) = diff_rgba.dimensions();
+
+                // Create a colored diff for better visibility
+                // In hybrid mode: 0.0 = no difference, 1.0 = maximum difference
+                // The color map converts this to grayscale where darker = more similar
+                let mut colored_diff = image::RgbaImage::new(width, height);
+
+                for y in 0..height {
+                    for x in 0..width {
+                        let pixel = diff_rgba.get_pixel(x, y);
+                        // In the color map, the gray value indicates similarity
+                        // Lighter pixels = more difference
+                        let diff_value = pixel[0]; // Use first channel (grayscale)
+
+                        if diff_value > 10 {
+                            // Highlight differences in red with intensity based on difference
+                            let alpha = (diff_value as f32 * 0.8) as u8 + 50;
+                            colored_diff.put_pixel(x, y, image::Rgba([255, 0, 0, alpha]));
+                        } else {
+                            // Keep similar areas semi-transparent with original image
+                            let orig_pixel = img_a.get_pixel(x, y);
+                            colored_diff.put_pixel(
+                                x,
+                                y,
+                                image::Rgba([orig_pixel[0], orig_pixel[1], orig_pixel[2], 128]),
+                            );
+                        }
+                    }
+                }
+
+                // Encode to PNG
+                let mut buf = Vec::new();
+                match colored_diff
+                    .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+                {
+                    Ok(()) => {
+                        let encoded = base64::engine::general_purpose::STANDARD.encode(&buf);
+                        Content::image(encoded, "image/png")
+                    }
+                    Err(e) => Content::text(
+                        json!({
+                            "error": "encode_error",
+                            "message": format!("Failed to encode diff image: {}", e)
+                        })
+                        .to_string(),
+                    ),
+                }
+            }
+            Err(e) => Content::text(
+                json!({
+                    "error": "comparison_error",
+                    "message": format!("Failed to compare images: {}", e)
+                })
+                .to_string(),
+            ),
+        }
+    }
+
+    /// Highlight an element with a colored border
+    #[tool(
+        description = "Draw highlight overlay on element by ID. Requires AT-SPI to get element bounds."
+    )]
+    async fn highlight_element(
+        &self,
+        Parameters(req): Parameters<HighlightElementRequest>,
+    ) -> String {
+        let id: u64 = match req.id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                return json!({
+                    "error": "invalid_id",
+                    "message": format!("Invalid ID format: {}", req.id)
+                })
+                .to_string();
+            }
+        };
+
+        // Parse color from hex string
+        let color = req.color.as_deref().unwrap_or("#ff0000ff");
+        let color = parse_hex_color(color).unwrap_or([255, 0, 0, 200]); // Default: red with alpha
+
+        let duration_ms = req.duration_ms.unwrap_or(3000);
+
+        #[cfg(target_os = "linux")]
+        {
+            // Get element bounds via AT-SPI
+            let bounds = atspi_client::get_bounds_blocking("demo", id);
+            match bounds {
+                Ok(Some(rect)) => {
+                    // Send highlight request via IPC
+                    match self
+                        .ipc_client
+                        .highlight_element(
+                            rect.x,
+                            rect.y,
+                            rect.width,
+                            rect.height,
+                            color,
+                            duration_ms,
+                        )
+                        .await
+                    {
+                        Ok(()) => json!({
+                            "success": true,
+                            "id": id,
+                            "bounds": { "x": rect.x, "y": rect.y, "width": rect.width, "height": rect.height },
+                            "duration_ms": duration_ms
+                        })
+                        .to_string(),
+                        Err(e) => json!({
+                            "error": "ipc_error",
+                            "message": format!("Failed to send highlight request: {}", e)
+                        })
+                        .to_string(),
+                    }
+                }
+                Ok(None) => json!({
+                    "error": "no_bounds",
+                    "message": format!("Element {} has no bounds", id)
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "atspi_error",
+                    "message": format!("Failed to get element bounds: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (id, color, duration_ms);
+            json!({
+                "error": "not_available",
+                "message": "highlight_element requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Clear all highlights
+    #[tool(description = "Remove all highlights")]
+    async fn clear_highlights(&self) -> String {
+        match self.ipc_client.clear_highlights().await {
+            Ok(()) => json!({
+                "success": true,
+                "message": "All highlights cleared"
+            })
+            .to_string(),
+            Err(e) => json!({
+                "error": "ipc_error",
+                "message": format!("Failed to clear highlights: {}", e)
+            })
+            .to_string(),
+        }
+    }
+
+    // ========================================================================
+    // Phase 8.3: Snapshot Diff
+    // ========================================================================
+
+    /// Save current UI tree state as a named snapshot
+    #[tool(description = "Save current UI tree state as a named snapshot for later comparison")]
+    async fn save_snapshot(&self, Parameters(req): Parameters<SaveSnapshotRequest>) -> String {
+        #[cfg(target_os = "linux")]
+        {
+            // Get current UI tree
+            match atspi_client::get_ui_tree_blocking("demo") {
+                Ok(Some(tree)) => {
+                    // Serialize to JSON
+                    let json = serde_json::to_string(&tree).unwrap_or_default();
+                    let node_count = tree.nodes.len();
+
+                    // Store snapshot
+                    if let Ok(mut snapshots) = self.snapshots.write() {
+                        snapshots.insert(req.name.clone(), json);
+                    }
+
+                    json!({
+                        "success": true,
+                        "name": req.name,
+                        "node_count": node_count
+                    })
+                    .to_string()
+                }
+                Ok(None) => json!({
+                    "error": "no_tree",
+                    "message": "No UI tree available"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "atspi_error",
+                    "message": format!("Failed to get UI tree: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = req;
+            json!({
+                "error": "not_available",
+                "message": "save_snapshot requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    /// Load a saved snapshot
+    #[tool(description = "Load a saved UI tree snapshot")]
+    async fn load_snapshot(&self, Parameters(req): Parameters<LoadSnapshotRequest>) -> String {
+        if let Ok(snapshots) = self.snapshots.read() {
+            if let Some(json) = snapshots.get(&req.name) {
+                match serde_json::from_str::<egui_mcp_protocol::UiTree>(json) {
+                    Ok(tree) => json!({
+                        "success": true,
+                        "name": req.name,
+                        "node_count": tree.nodes.len(),
+                        "tree": tree
+                    })
+                    .to_string(),
+                    Err(e) => json!({
+                        "error": "parse_error",
+                        "message": format!("Failed to parse snapshot: {}", e)
+                    })
+                    .to_string(),
+                }
+            } else {
+                json!({
+                    "error": "not_found",
+                    "message": format!("Snapshot '{}' not found", req.name)
+                })
+                .to_string()
+            }
+        } else {
+            json!({
+                "error": "lock_error",
+                "message": "Failed to acquire snapshot lock"
+            })
+            .to_string()
+        }
+    }
+
+    /// Compare two saved snapshots
+    #[tool(description = "Compare two saved snapshots and return the differences")]
+    async fn diff_snapshots(&self, Parameters(req): Parameters<DiffSnapshotsRequest>) -> String {
+        let snapshots = match self.snapshots.read() {
+            Ok(s) => s,
+            Err(_) => {
+                return json!({
+                    "error": "lock_error",
+                    "message": "Failed to acquire snapshot lock"
+                })
+                .to_string();
+            }
+        };
+
+        let json_a = match snapshots.get(&req.name_a) {
+            Some(j) => j,
+            None => {
+                return json!({
+                    "error": "not_found",
+                    "message": format!("Snapshot '{}' not found", req.name_a)
+                })
+                .to_string();
+            }
+        };
+
+        let json_b = match snapshots.get(&req.name_b) {
+            Some(j) => j,
+            None => {
+                return json!({
+                    "error": "not_found",
+                    "message": format!("Snapshot '{}' not found", req.name_b)
+                })
+                .to_string();
+            }
+        };
+
+        let tree_a: egui_mcp_protocol::UiTree = match serde_json::from_str(json_a) {
+            Ok(t) => t,
+            Err(e) => {
+                return json!({
+                    "error": "parse_error",
+                    "message": format!("Failed to parse snapshot '{}': {}", req.name_a, e)
+                })
+                .to_string();
+            }
+        };
+
+        let tree_b: egui_mcp_protocol::UiTree = match serde_json::from_str(json_b) {
+            Ok(t) => t,
+            Err(e) => {
+                return json!({
+                    "error": "parse_error",
+                    "message": format!("Failed to parse snapshot '{}': {}", req.name_b, e)
+                })
+                .to_string();
+            }
+        };
+
+        let diff = compute_tree_diff(&tree_a, &tree_b);
+        json!({
+            "name_a": req.name_a,
+            "name_b": req.name_b,
+            "diff": diff
+        })
+        .to_string()
+    }
+
+    /// Compare current UI state with a saved snapshot
+    #[tool(description = "Compare current UI tree state with a saved snapshot")]
+    async fn diff_current(&self, Parameters(req): Parameters<DiffCurrentRequest>) -> String {
+        #[cfg(target_os = "linux")]
+        {
+            // Get saved snapshot
+            let saved_json = {
+                let snapshots = match self.snapshots.read() {
+                    Ok(s) => s,
+                    Err(_) => {
+                        return json!({
+                            "error": "lock_error",
+                            "message": "Failed to acquire snapshot lock"
+                        })
+                        .to_string();
+                    }
+                };
+
+                match snapshots.get(&req.name) {
+                    Some(j) => j.clone(),
+                    None => {
+                        return json!({
+                            "error": "not_found",
+                            "message": format!("Snapshot '{}' not found", req.name)
+                        })
+                        .to_string();
+                    }
+                }
+            };
+
+            let saved_tree: egui_mcp_protocol::UiTree = match serde_json::from_str(&saved_json) {
+                Ok(t) => t,
+                Err(e) => {
+                    return json!({
+                        "error": "parse_error",
+                        "message": format!("Failed to parse saved snapshot: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+
+            // Get current tree
+            match atspi_client::get_ui_tree_blocking("demo") {
+                Ok(Some(current_tree)) => {
+                    let diff = compute_tree_diff(&saved_tree, &current_tree);
+                    json!({
+                        "snapshot_name": req.name,
+                        "diff": diff
+                    })
+                    .to_string()
+                }
+                Ok(None) => json!({
+                    "error": "no_tree",
+                    "message": "No current UI tree available"
+                })
+                .to_string(),
+                Err(e) => json!({
+                    "error": "atspi_error",
+                    "message": format!("Failed to get current UI tree: {}", e)
+                })
+                .to_string(),
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = req;
+            json!({
+                "error": "not_available",
+                "message": "diff_current requires AT-SPI on Linux."
+            })
+            .to_string()
+        }
+    }
+
+    // =========================================================================
+    // 8.5 Console/Log Access
+    // =========================================================================
+
+    /// Get recent log entries from the egui application
+    #[tool(
+        description = "Get recent log entries from the egui application. Note: Requires the egui app to be configured with McpLogLayer."
+    )]
+    async fn get_logs(&self, Parameters(req): Parameters<GetLogsRequest>) -> String {
+        match self.ipc_client.get_logs(req.level, req.limit).await {
+            Ok(entries) => json!({
+                "count": entries.len(),
+                "entries": entries
+            })
+            .to_string(),
+            Err(e) => json!({
+                "error": "ipc_error",
+                "message": format!("Failed to get logs: {}", e)
+            })
+            .to_string(),
+        }
+    }
+
+    /// Clear all log entries in the egui application
+    #[tool(description = "Clear the log buffer in the egui application")]
+    async fn clear_logs(&self) -> String {
+        match self.ipc_client.clear_logs().await {
+            Ok(()) => json!({
+                "success": true,
+                "message": "Log buffer cleared"
+            })
+            .to_string(),
+            Err(e) => json!({
+                "error": "ipc_error",
+                "message": format!("Failed to clear logs: {}", e)
+            })
+            .to_string(),
+        }
+    }
+
+    // =========================================================================
+    // 8.4 Performance Metrics
+    // =========================================================================
+
+    /// Get current frame statistics from the egui application
+    #[tool(
+        description = "Get current frame statistics (FPS, frame time) from the egui application. Note: Requires the egui app to call record_frame()."
+    )]
+    async fn get_frame_stats(&self) -> String {
+        match self.ipc_client.get_frame_stats().await {
+            Ok(stats) => json!({
+                "fps": stats.fps,
+                "frame_time_ms": stats.frame_time_ms,
+                "frame_time_min_ms": stats.frame_time_min_ms,
+                "frame_time_max_ms": stats.frame_time_max_ms,
+                "sample_count": stats.sample_count
+            })
+            .to_string(),
+            Err(e) => json!({
+                "error": "ipc_error",
+                "message": format!("Failed to get frame stats: {}", e)
+            })
+            .to_string(),
+        }
+    }
+
+    /// Start recording performance data
+    #[tool(
+        description = "Start recording performance data for later analysis. Call get_perf_report to stop and get results."
+    )]
+    async fn start_perf_recording(
+        &self,
+        Parameters(req): Parameters<StartPerfRecordingRequest>,
+    ) -> String {
+        let duration = req.duration_ms.unwrap_or(0);
+        match self.ipc_client.start_perf_recording(duration).await {
+            Ok(()) => json!({
+                "success": true,
+                "message": if duration > 0 {
+                    format!("Recording started for {}ms", duration)
+                } else {
+                    "Recording started (call get_perf_report to stop)".to_string()
+                }
+            })
+            .to_string(),
+            Err(e) => json!({
+                "error": "ipc_error",
+                "message": format!("Failed to start recording: {}", e)
+            })
+            .to_string(),
+        }
+    }
+
+    /// Get performance report (stops recording)
+    #[tool(
+        description = "Stop performance recording and get the report with statistics including percentiles."
+    )]
+    async fn get_perf_report(&self) -> String {
+        match self.ipc_client.get_perf_report().await {
+            Ok(Some(report)) => json!({
+                "duration_ms": report.duration_ms,
+                "total_frames": report.total_frames,
+                "avg_fps": report.avg_fps,
+                "avg_frame_time_ms": report.avg_frame_time_ms,
+                "min_frame_time_ms": report.min_frame_time_ms,
+                "max_frame_time_ms": report.max_frame_time_ms,
+                "p95_frame_time_ms": report.p95_frame_time_ms,
+                "p99_frame_time_ms": report.p99_frame_time_ms
+            })
+            .to_string(),
+            Ok(None) => json!({
+                "error": "no_data",
+                "message": "No performance recording active or no frames recorded"
+            })
+            .to_string(),
+            Err(e) => json!({
+                "error": "ipc_error",
+                "message": format!("Failed to get performance report: {}", e)
+            })
+            .to_string(),
+        }
+    }
+}
+
+/// Compute the difference between two UI trees
+fn compute_tree_diff(
+    tree_a: &egui_mcp_protocol::UiTree,
+    tree_b: &egui_mcp_protocol::UiTree,
+) -> serde_json::Value {
+    use std::collections::HashMap;
+
+    let map_a: HashMap<u64, &egui_mcp_protocol::NodeInfo> =
+        tree_a.nodes.iter().map(|n| (n.id, n)).collect();
+    let map_b: HashMap<u64, &egui_mcp_protocol::NodeInfo> =
+        tree_b.nodes.iter().map(|n| (n.id, n)).collect();
+
+    let mut added = Vec::new();
+    let mut removed = Vec::new();
+    let mut modified = Vec::new();
+
+    // Find added nodes (in B but not in A)
+    for (id, node) in &map_b {
+        if !map_a.contains_key(id) {
+            added.push(json!({
+                "id": id,
+                "role": node.role,
+                "label": node.label
+            }));
+        }
+    }
+
+    // Find removed nodes (in A but not in B)
+    for (id, node) in &map_a {
+        if !map_b.contains_key(id) {
+            removed.push(json!({
+                "id": id,
+                "role": node.role,
+                "label": node.label
+            }));
+        }
+    }
+
+    // Find modified nodes (in both but different)
+    for (id, node_a) in &map_a {
+        if let Some(node_b) = map_b.get(id) {
+            let mut changes = Vec::new();
+
+            if node_a.role != node_b.role {
+                changes.push(json!({
+                    "field": "role",
+                    "old": node_a.role,
+                    "new": node_b.role
+                }));
+            }
+            if node_a.label != node_b.label {
+                changes.push(json!({
+                    "field": "label",
+                    "old": node_a.label,
+                    "new": node_b.label
+                }));
+            }
+            if node_a.value != node_b.value {
+                changes.push(json!({
+                    "field": "value",
+                    "old": node_a.value,
+                    "new": node_b.value
+                }));
+            }
+            if node_a.toggled != node_b.toggled {
+                changes.push(json!({
+                    "field": "toggled",
+                    "old": node_a.toggled,
+                    "new": node_b.toggled
+                }));
+            }
+            if node_a.disabled != node_b.disabled {
+                changes.push(json!({
+                    "field": "disabled",
+                    "old": node_a.disabled,
+                    "new": node_b.disabled
+                }));
+            }
+            if node_a.focused != node_b.focused {
+                changes.push(json!({
+                    "field": "focused",
+                    "old": node_a.focused,
+                    "new": node_b.focused
+                }));
+            }
+
+            if !changes.is_empty() {
+                modified.push(json!({
+                    "id": id,
+                    "role": node_a.role,
+                    "label": node_a.label,
+                    "changes": changes
+                }));
+            }
+        }
+    }
+
+    json!({
+        "added_count": added.len(),
+        "removed_count": removed.len(),
+        "modified_count": modified.len(),
+        "added": added,
+        "removed": removed,
+        "modified": modified
+    })
+}
+
+/// Parse a hex color string to RGBA array
+fn parse_hex_color(s: &str) -> Option<[u8; 4]> {
+    let s = s.trim_start_matches('#');
+    match s.len() {
+        6 => {
+            // #RRGGBB
+            let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+            Some([r, g, b, 200]) // Default alpha
+        }
+        8 => {
+            // #RRGGBBAA
+            let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+            let a = u8::from_str_radix(&s[6..8], 16).ok()?;
+            Some([r, g, b, a])
+        }
+        _ => None,
+    }
 }
 
 impl EguiMcpServer {
@@ -2403,8 +3343,12 @@ impl ServerHandler for EguiMcpServer {
                  'is_checked' to check if element is checked/pressed (AT-SPI State), \
                  'screenshot_element' to capture a specific element (AT-SPI + IPC), \
                  'screenshot_region' to capture a specific region (IPC), \
-                 'wait_for_element' to wait for element to appear/disappear (AT-SPI), and \
-                 'wait_for_state' to wait for element state change (AT-SPI)."
+                 'wait_for_element' to wait for element to appear/disappear (AT-SPI), \
+                 'wait_for_state' to wait for element state change (AT-SPI), \
+                 'compare_screenshots' to compare two screenshots and get similarity score, \
+                 'diff_screenshots' to generate a visual diff image highlighting differences, \
+                 'highlight_element' to draw a colored highlight on an element (AT-SPI + IPC), and \
+                 'clear_highlights' to remove all highlights (IPC)."
                     .into(),
             ),
         }

@@ -218,6 +218,63 @@ impl IpcServer {
                     }
                 }
             }
+
+            Request::HighlightElement {
+                x,
+                y,
+                width,
+                height,
+                color,
+                duration_ms,
+            } => {
+                let rect =
+                    egui::Rect::from_min_size(egui::pos2(*x, *y), egui::vec2(*width, *height));
+                let egui_color =
+                    egui::Color32::from_rgba_unmultiplied(color[0], color[1], color[2], color[3]);
+                let expires_at = if *duration_ms == 0 {
+                    None
+                } else {
+                    Some(std::time::Instant::now() + std::time::Duration::from_millis(*duration_ms))
+                };
+                client
+                    .add_highlight(crate::Highlight {
+                        rect,
+                        color: egui_color,
+                        expires_at,
+                    })
+                    .await;
+                Response::Success
+            }
+
+            Request::ClearHighlights => {
+                client.clear_highlights().await;
+                Response::Success
+            }
+
+            Request::GetLogs { level, limit } => {
+                let entries = client.get_logs(level.as_deref(), *limit).await;
+                Response::Logs { entries }
+            }
+
+            Request::ClearLogs => {
+                client.clear_logs().await;
+                Response::Success
+            }
+
+            Request::GetFrameStats => {
+                let stats = client.get_frame_stats().await;
+                Response::FrameStatsResponse { stats }
+            }
+
+            Request::StartPerfRecording { duration_ms } => {
+                client.start_perf_recording(*duration_ms).await;
+                Response::Success
+            }
+
+            Request::GetPerfReport => {
+                let report = client.get_perf_report().await;
+                Response::PerfReportResponse { report }
+            }
         }
     }
 

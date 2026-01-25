@@ -68,6 +68,55 @@ pub enum MouseButton {
     Middle,
 }
 
+/// Log entry captured from the application
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogEntry {
+    /// Log level (TRACE, DEBUG, INFO, WARN, ERROR)
+    pub level: String,
+    /// Target module/crate
+    pub target: String,
+    /// Log message
+    pub message: String,
+    /// Timestamp in milliseconds since UNIX epoch
+    pub timestamp_ms: u64,
+}
+
+/// Frame statistics for performance monitoring
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FrameStats {
+    /// Current frames per second
+    pub fps: f32,
+    /// Average frame time in milliseconds
+    pub frame_time_ms: f32,
+    /// Minimum frame time in milliseconds
+    pub frame_time_min_ms: f32,
+    /// Maximum frame time in milliseconds
+    pub frame_time_max_ms: f32,
+    /// Number of frames sampled
+    pub sample_count: usize,
+}
+
+/// Performance report from a recording session
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PerfReport {
+    /// Recording duration in milliseconds
+    pub duration_ms: u64,
+    /// Total frames recorded
+    pub total_frames: usize,
+    /// Average FPS over the recording
+    pub avg_fps: f32,
+    /// Average frame time in milliseconds
+    pub avg_frame_time_ms: f32,
+    /// Minimum frame time in milliseconds
+    pub min_frame_time_ms: f32,
+    /// Maximum frame time in milliseconds
+    pub max_frame_time_ms: f32,
+    /// 95th percentile frame time in milliseconds
+    pub p95_frame_time_ms: f32,
+    /// 99th percentile frame time in milliseconds
+    pub p99_frame_time_ms: f32,
+}
+
 /// Request types for IPC communication
 ///
 /// These are operations that require direct client integration and cannot be
@@ -152,6 +201,49 @@ pub enum Request {
         /// Mouse button to click
         button: MouseButton,
     },
+
+    /// Highlight an element with a colored border
+    HighlightElement {
+        /// Bounding box x coordinate
+        x: f32,
+        /// Bounding box y coordinate
+        y: f32,
+        /// Bounding box width
+        width: f32,
+        /// Bounding box height
+        height: f32,
+        /// Color as RGBA (0-255 each)
+        color: [u8; 4],
+        /// Duration in milliseconds (0 = until cleared)
+        duration_ms: u64,
+    },
+
+    /// Clear all highlights
+    ClearHighlights,
+
+    /// Get recent log entries
+    GetLogs {
+        /// Minimum log level to return (TRACE, DEBUG, INFO, WARN, ERROR)
+        /// If None, returns all levels
+        level: Option<String>,
+        /// Maximum number of entries to return
+        limit: Option<usize>,
+    },
+
+    /// Clear the log buffer
+    ClearLogs,
+
+    /// Get current frame statistics
+    GetFrameStats,
+
+    /// Start recording performance data
+    StartPerfRecording {
+        /// Duration to record in milliseconds (0 = until stopped)
+        duration_ms: u64,
+    },
+
+    /// Stop and get performance report
+    GetPerfReport,
 }
 
 /// Response types for IPC communication
@@ -174,6 +266,24 @@ pub enum Response {
 
     /// Error response
     Error { message: String },
+
+    /// Log entries response
+    Logs {
+        /// Log entries (oldest first)
+        entries: Vec<LogEntry>,
+    },
+
+    /// Frame statistics response
+    FrameStatsResponse {
+        /// Current frame statistics
+        stats: FrameStats,
+    },
+
+    /// Performance report response
+    PerfReportResponse {
+        /// Performance report (None if not recording or no data)
+        report: Option<PerfReport>,
+    },
 }
 
 /// Protocol errors
