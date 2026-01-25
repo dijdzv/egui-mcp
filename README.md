@@ -39,10 +39,35 @@ egui-mcp provides UI automation capabilities for [egui](https://github.com/emilk
 | `take_screenshot` | Capture application screenshot | IPC |
 | `ping` | Verify server is running | - |
 | `check_connection` | Check connection to egui app | IPC |
+| `is_visible` | Check if element is visible | AT-SPI State |
+| `is_enabled` | Check if element is enabled | AT-SPI State |
+| `is_focused` | Check if element has focus | AT-SPI State |
+| `is_checked` | Check toggle/checkbox state | AT-SPI State |
+| `screenshot_element` | Screenshot specific element | AT-SPI + IPC |
+| `screenshot_region` | Screenshot specific region | IPC |
+| `wait_for_element` | Wait for element to appear/disappear | Polling AT-SPI |
+| `wait_for_state` | Wait for element state change | Polling AT-SPI |
+| `compare_screenshots` | Compare two screenshots (similarity score) | Server |
+| `diff_screenshots` | Generate visual diff image | Server |
+| `highlight_element` | Draw highlight overlay on element | AT-SPI + IPC |
+| `clear_highlights` | Remove all highlights | IPC |
+| `save_snapshot` | Save current UI tree state | AT-SPI |
+| `load_snapshot` | Load a saved snapshot | Memory |
+| `diff_snapshots` | Compare two saved snapshots | Memory |
+| `diff_current` | Compare current state with snapshot | AT-SPI + Memory |
+| `get_frame_stats` | Get FPS and frame timing | IPC *** |
+| `start_perf_recording` | Start recording performance | IPC *** |
+| `get_perf_report` | Get performance report with percentiles | IPC *** |
+| `get_logs` | Get recent log entries | IPC **** |
+| `clear_logs` | Clear log buffer | IPC **** |
 
 > \* For ComboBox, checks the name property to determine if something is selected (returns 0 or 1).
 >
 > \*\* These tools require the element to have focus first. Use `focus_element` before calling. Returns -1 if no focus.
+>
+> \*\*\* Requires the egui app to call `record_frame_auto()`. See [Performance Metrics](#performance-metrics).
+>
+> \*\*\*\* Requires the egui app to be configured with `McpLogLayer`. See [Log Access](#log-access).
 
 ### Not Working (Limitation)
 
@@ -196,6 +221,60 @@ Once connected, the following MCP tools are available:
 - **`take_screenshot`** - Capture screenshot (returns ImageContent or saves to file)
 
 > See [Features](#features) for tools that are not working due to egui limitations.
+
+### Performance Metrics
+
+To enable performance metrics (`get_frame_stats`, `start_perf_recording`, `get_perf_report`), call `record_frame_auto()` in your egui app's update loop:
+
+```rust
+impl eframe::App for MyApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // ... your UI code ...
+
+        // Record frame for performance metrics (1 line only!)
+        self.runtime.block_on(self.mcp_client.record_frame_auto());
+    }
+}
+```
+
+### Log Access
+
+To enable log access (`get_logs`, `clear_logs`), configure `McpLogLayer` with tracing:
+
+```rust
+use egui_mcp_client::{McpClient, McpLogLayer};
+use tracing_subscriber::prelude::*;
+
+fn main() {
+    // Set up MCP log layer (captures logs for MCP access)
+    let (mcp_layer, log_buffer) = McpLogLayer::new(1000); // Keep last 1000 entries
+
+    tracing_subscriber::registry()
+        .with(mcp_layer)                           // Capture logs for MCP
+        .with(tracing_subscriber::fmt::layer())    // Also log to stdout
+        .init();
+
+    // Pass log buffer to MCP client
+    let mcp_client = McpClient::new().with_log_buffer_sync(log_buffer);
+    // ... run egui app
+}
+```
+
+### Element Highlight
+
+To enable element highlighting (`highlight_element`, `clear_highlights`), call `draw_highlights()` at the end of your update loop:
+
+```rust
+impl eframe::App for MyApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // ... your UI code ...
+
+        // Draw highlights at the end
+        let highlights = self.runtime.block_on(self.mcp_client.get_highlights());
+        egui_mcp_client::draw_highlights(ctx, &highlights);
+    }
+}
+```
 
 ## Development
 
