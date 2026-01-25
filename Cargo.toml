@@ -8,7 +8,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/dijdzv/egui-mcp"
@@ -47,6 +47,6 @@ base64 = "0.22"
 schemars = "0.8"
 
 # Internal crates
-egui-mcp-protocol = { path = "crates/egui-mcp-protocol", version = "0.0.1" }
-egui-mcp-client = { path = "crates/egui-mcp-client", version = "0.0.1" }
+egui-mcp-protocol = { path = "crates/egui-mcp-protocol", version = "0.0.2" }
+egui-mcp-client = { path = "crates/egui-mcp-client", version = "0.0.2" }
 
