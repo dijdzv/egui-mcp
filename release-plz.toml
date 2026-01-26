@@ -24,9 +24,10 @@ publish = true
 name = "egui-mcp-server"
 publish = true
 
-# Demo app is not published or released
+# Demo app is completely excluded from release process
 [[package]]
 name = "demo-app"
+release = false
 publish = false
 changelog_update = false
 git_release_enable = false
