@@ -3,6 +3,7 @@ name = "egui-mcp-client"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Library to embed in egui apps for MCP integration"
 
 [dependencies]

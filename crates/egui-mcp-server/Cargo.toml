@@ -3,6 +3,7 @@ name = "egui-mcp-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "MCP server for egui UI automation"
 
 [[bin]]
