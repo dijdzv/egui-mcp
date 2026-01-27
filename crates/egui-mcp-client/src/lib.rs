@@ -30,7 +30,7 @@ pub use egui_mcp_protocol::{FrameStats, LogEntry, MouseButton, PerfReport, Reque
 mod log_layer;
 mod server;
 
-pub use log_layer::{LogBuffer, McpLogLayer, level_to_priority};
+pub use log_layer::{DEFAULT_MAX_MESSAGE_LENGTH, LogBuffer, McpLogLayer, level_to_priority};
 pub use server::IpcServer;
 
 // Re-export egui types for convenience
