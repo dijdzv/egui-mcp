@@ -9,6 +9,7 @@
 use crate::{McpClient, PendingInput};
 use base64::Engine;
 use egui_mcp_protocol::{ProtocolError, Request, Response, read_request, write_response};
+use std::time::Duration;
 use tokio::net::{UnixListener, UnixStream};
 
 /// IPC server that listens for MCP requests
@@ -77,29 +78,24 @@ impl IpcServer {
             Request::Ping => Response::Pong,
 
             Request::TakeScreenshot => {
-                // Request a screenshot from the UI
-                client.request_screenshot().await;
+                // Request a screenshot and get a receiver (event-driven)
+                let rx = client.request_screenshot().await;
 
-                // Wait for the screenshot to be captured (with timeout)
-                let mut attempts = 0;
-                const MAX_ATTEMPTS: u32 = 50; // 50 * 100ms = 5 seconds max
-                loop {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                    if let Some(data) = client.get_screenshot().await {
-                        // Clear the screenshot data after reading
-                        client.clear_screenshot().await;
+                // Wait for the screenshot with timeout (no polling needed)
+                match tokio::time::timeout(Duration::from_secs(5), rx).await {
+                    Ok(Ok(data)) => {
                         let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
-                        return Response::Screenshot {
+                        Response::Screenshot {
                             data: encoded,
                             format: "png".to_string(),
-                        };
+                        }
                     }
-                    attempts += 1;
-                    if attempts >= MAX_ATTEMPTS {
-                        return Response::Error {
-                            message: "Screenshot timeout: the egui app did not provide a screenshot within 5 seconds".to_string(),
-                        };
-                    }
+                    Ok(Err(_)) => Response::Error {
+                        message: "Screenshot request was cancelled".to_string(),
+                    },
+                    Err(_) => Response::Error {
+                        message: "Screenshot timeout: the egui app did not provide a screenshot within 5 seconds".to_string(),
+                    },
                 }
             }
 
@@ -181,41 +177,33 @@ impl IpcServer {
                 width,
                 height,
             } => {
-                // Request a full screenshot from the UI
-                client.request_screenshot().await;
+                // Request a screenshot and get a receiver (event-driven)
+                let rx = client.request_screenshot().await;
 
-                // Wait for the screenshot to be captured (with timeout)
-                let mut attempts = 0;
-                const MAX_ATTEMPTS: u32 = 50; // 50 * 100ms = 5 seconds max
-                loop {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                    if let Some(data) = client.get_screenshot().await {
-                        // Clear the screenshot data after reading
-                        client.clear_screenshot().await;
-
+                // Wait for the screenshot with timeout (no polling needed)
+                match tokio::time::timeout(Duration::from_secs(5), rx).await {
+                    Ok(Ok(data)) => {
                         // Crop the screenshot to the specified region
                         match Self::crop_screenshot(&data, *x, *y, *width, *height) {
                             Ok(cropped) => {
                                 let encoded =
                                     base64::engine::general_purpose::STANDARD.encode(&cropped);
-                                return Response::Screenshot {
+                                Response::Screenshot {
                                     data: encoded,
                                     format: "png".to_string(),
-                                };
+                                }
                             }
-                            Err(e) => {
-                                return Response::Error {
-                                    message: format!("Failed to crop screenshot: {}", e),
-                                };
-                            }
+                            Err(e) => Response::Error {
+                                message: format!("Failed to crop screenshot: {}", e),
+                            },
                         }
                     }
-                    attempts += 1;
-                    if attempts >= MAX_ATTEMPTS {
-                        return Response::Error {
-                            message: "Screenshot timeout: the egui app did not provide a screenshot within 5 seconds".to_string(),
-                        };
-                    }
+                    Ok(Err(_)) => Response::Error {
+                        message: "Screenshot request was cancelled".to_string(),
+                    },
+                    Err(_) => Response::Error {
+                        message: "Screenshot timeout: the egui app did not provide a screenshot within 5 seconds".to_string(),
+                    },
                 }
             }
 
