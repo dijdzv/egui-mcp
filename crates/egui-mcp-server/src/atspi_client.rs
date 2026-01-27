@@ -3,11 +3,13 @@
 //! This module provides async functions to interact with accessible applications
 //! via the AT-SPI (Assistive Technology Service Provider Interface) protocol.
 
+use crate::errors::AtspiError;
 use atspi::connection::AccessibilityConnection;
 use atspi::proxy::accessible::{AccessibleProxy, ObjectRefExt};
 use atspi::{CoordType, ObjectRefOwned, ScrollType, State, StateSet};
 use egui_mcp_protocol::{NodeInfo, Rect, UiTree};
 
+/// Boxed error type for AT-SPI operations
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 /// Value information returned from AT-SPI Value interface
@@ -162,7 +164,7 @@ impl AtspiClient {
     pub async fn click_element(&self, app_name: &str, id: u64) -> Result<bool, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::action::ActionProxy;
@@ -181,7 +183,7 @@ impl AtspiClient {
     pub async fn set_text(&self, app_name: &str, id: u64, text: &str) -> Result<bool, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::editable_text::EditableTextProxy;
@@ -377,7 +379,7 @@ impl AtspiClient {
     pub async fn get_bounds(&self, app_name: &str, id: u64) -> Result<Option<Rect>, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::component::ComponentProxy;
@@ -401,7 +403,7 @@ impl AtspiClient {
     pub async fn focus_element(&self, app_name: &str, id: u64) -> Result<bool, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::component::ComponentProxy;
@@ -419,7 +421,7 @@ impl AtspiClient {
     pub async fn scroll_to_element(&self, app_name: &str, id: u64) -> Result<bool, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::component::ComponentProxy;
@@ -446,7 +448,7 @@ impl AtspiClient {
     ) -> Result<bool, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::component::ComponentProxy;
@@ -479,7 +481,7 @@ impl AtspiClient {
     pub async fn get_value(&self, app_name: &str, id: u64) -> Result<Option<ValueInfo>, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::value::ValueProxy;
@@ -506,7 +508,7 @@ impl AtspiClient {
     pub async fn set_value(&self, app_name: &str, id: u64, value: f64) -> Result<bool, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::value::ValueProxy;
@@ -528,7 +530,7 @@ impl AtspiClient {
     pub async fn select_item(&self, app_name: &str, id: u64, index: i32) -> Result<bool, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::selection::SelectionProxy;
@@ -551,7 +553,7 @@ impl AtspiClient {
     ) -> Result<bool, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::selection::SelectionProxy;
@@ -569,7 +571,7 @@ impl AtspiClient {
     pub async fn get_selected_count(&self, app_name: &str, id: u64) -> Result<i32, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         // First, check the role to handle ComboBox specially
@@ -604,7 +606,7 @@ impl AtspiClient {
     pub async fn select_all(&self, app_name: &str, id: u64) -> Result<bool, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::selection::SelectionProxy;
@@ -622,7 +624,7 @@ impl AtspiClient {
     pub async fn clear_selection(&self, app_name: &str, id: u64) -> Result<bool, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::selection::SelectionProxy;
@@ -644,7 +646,7 @@ impl AtspiClient {
     pub async fn get_text(&self, app_name: &str, id: u64) -> Result<Option<TextInfo>, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::text::TextProxy;
@@ -676,7 +678,7 @@ impl AtspiClient {
     ) -> Result<Option<TextSelection>, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::text::TextProxy;
@@ -715,7 +717,7 @@ impl AtspiClient {
     ) -> Result<bool, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::text::TextProxy;
@@ -744,7 +746,7 @@ impl AtspiClient {
     pub async fn get_caret_position(&self, app_name: &str, id: u64) -> Result<i32, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::text::TextProxy;
@@ -767,7 +769,7 @@ impl AtspiClient {
     ) -> Result<bool, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         use atspi::proxy::text::TextProxy;
@@ -789,7 +791,7 @@ impl AtspiClient {
     pub async fn get_element_state(&self, app_name: &str, id: u64) -> Result<StateSet, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
-            return Err(format!("Element with id {} not found", id).into());
+            return Err(AtspiError::element_not_found(id, app_name).into());
         };
 
         let accessible_proxy = AccessibleProxy::builder(self.connection.connection())

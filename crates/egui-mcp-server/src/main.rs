@@ -12,6 +12,8 @@ mod utils;
 
 #[cfg(target_os = "linux")]
 mod atspi_client;
+#[cfg(target_os = "linux")]
+mod errors;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};

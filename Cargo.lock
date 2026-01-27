@@ -1215,6 +1215,7 @@ dependencies = [
  "schemars 0.8.22",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
  "tracing-subscriber",
