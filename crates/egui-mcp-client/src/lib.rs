@@ -431,6 +431,7 @@ fn convert_mouse_button(button: &MouseButton) -> egui::PointerButton {
 /// Parse a key string into egui Key for special keys
 fn parse_special_key(key: &str) -> Option<egui::Key> {
     match key.to_lowercase().as_str() {
+        // Command keys
         "enter" | "return" => Some(egui::Key::Enter),
         "tab" => Some(egui::Key::Tab),
         "backspace" => Some(egui::Key::Backspace),
@@ -446,6 +447,11 @@ fn parse_special_key(key: &str) -> Option<egui::Key> {
         "pageup" => Some(egui::Key::PageUp),
         "pagedown" => Some(egui::Key::PageDown),
         "insert" => Some(egui::Key::Insert),
+        "copy" => Some(egui::Key::Copy),
+        "cut" => Some(egui::Key::Cut),
+        "paste" => Some(egui::Key::Paste),
+
+        // Function keys F1-F35
         "f1" => Some(egui::Key::F1),
         "f2" => Some(egui::Key::F2),
         "f3" => Some(egui::Key::F3),
@@ -458,6 +464,93 @@ fn parse_special_key(key: &str) -> Option<egui::Key> {
         "f10" => Some(egui::Key::F10),
         "f11" => Some(egui::Key::F11),
         "f12" => Some(egui::Key::F12),
+        "f13" => Some(egui::Key::F13),
+        "f14" => Some(egui::Key::F14),
+        "f15" => Some(egui::Key::F15),
+        "f16" => Some(egui::Key::F16),
+        "f17" => Some(egui::Key::F17),
+        "f18" => Some(egui::Key::F18),
+        "f19" => Some(egui::Key::F19),
+        "f20" => Some(egui::Key::F20),
+        "f21" => Some(egui::Key::F21),
+        "f22" => Some(egui::Key::F22),
+        "f23" => Some(egui::Key::F23),
+        "f24" => Some(egui::Key::F24),
+        "f25" => Some(egui::Key::F25),
+        "f26" => Some(egui::Key::F26),
+        "f27" => Some(egui::Key::F27),
+        "f28" => Some(egui::Key::F28),
+        "f29" => Some(egui::Key::F29),
+        "f30" => Some(egui::Key::F30),
+        "f31" => Some(egui::Key::F31),
+        "f32" => Some(egui::Key::F32),
+        "f33" => Some(egui::Key::F33),
+        "f34" => Some(egui::Key::F34),
+        "f35" => Some(egui::Key::F35),
+
+        // Punctuation keys
+        "colon" | ":" => Some(egui::Key::Colon),
+        "comma" | "," => Some(egui::Key::Comma),
+        "backslash" | "\\" => Some(egui::Key::Backslash),
+        "slash" | "/" => Some(egui::Key::Slash),
+        "pipe" | "|" => Some(egui::Key::Pipe),
+        "questionmark" | "?" => Some(egui::Key::Questionmark),
+        "exclamationmark" | "!" => Some(egui::Key::Exclamationmark),
+        "openbracket" | "[" => Some(egui::Key::OpenBracket),
+        "closebracket" | "]" => Some(egui::Key::CloseBracket),
+        "opencurlybracket" | "{" => Some(egui::Key::OpenCurlyBracket),
+        "closecurlybracket" | "}" => Some(egui::Key::CloseCurlyBracket),
+        "backtick" | "grave" | "`" => Some(egui::Key::Backtick),
+        "minus" | "-" => Some(egui::Key::Minus),
+        "period" | "." => Some(egui::Key::Period),
+        "plus" | "+" => Some(egui::Key::Plus),
+        "equals" | "=" => Some(egui::Key::Equals),
+        "semicolon" | ";" => Some(egui::Key::Semicolon),
+        "quote" | "'" => Some(egui::Key::Quote),
+
+        // Digit keys (Num0-Num9)
+        "num0" | "0" => Some(egui::Key::Num0),
+        "num1" | "1" => Some(egui::Key::Num1),
+        "num2" | "2" => Some(egui::Key::Num2),
+        "num3" | "3" => Some(egui::Key::Num3),
+        "num4" | "4" => Some(egui::Key::Num4),
+        "num5" | "5" => Some(egui::Key::Num5),
+        "num6" | "6" => Some(egui::Key::Num6),
+        "num7" | "7" => Some(egui::Key::Num7),
+        "num8" | "8" => Some(egui::Key::Num8),
+        "num9" | "9" => Some(egui::Key::Num9),
+
+        // Letter keys (A-Z)
+        "a" => Some(egui::Key::A),
+        "b" => Some(egui::Key::B),
+        "c" => Some(egui::Key::C),
+        "d" => Some(egui::Key::D),
+        "e" => Some(egui::Key::E),
+        "f" => Some(egui::Key::F),
+        "g" => Some(egui::Key::G),
+        "h" => Some(egui::Key::H),
+        "i" => Some(egui::Key::I),
+        "j" => Some(egui::Key::J),
+        "k" => Some(egui::Key::K),
+        "l" => Some(egui::Key::L),
+        "m" => Some(egui::Key::M),
+        "n" => Some(egui::Key::N),
+        "o" => Some(egui::Key::O),
+        "p" => Some(egui::Key::P),
+        "q" => Some(egui::Key::Q),
+        "r" => Some(egui::Key::R),
+        "s" => Some(egui::Key::S),
+        "t" => Some(egui::Key::T),
+        "u" => Some(egui::Key::U),
+        "v" => Some(egui::Key::V),
+        "w" => Some(egui::Key::W),
+        "x" => Some(egui::Key::X),
+        "y" => Some(egui::Key::Y),
+        "z" => Some(egui::Key::Z),
+
+        // Browser/multimedia keys
+        "browserback" => Some(egui::Key::BrowserBack),
+
         _ => None,
     }
 }
@@ -681,5 +774,174 @@ pub fn draw_highlights(ctx: &egui::Context, highlights: &[Highlight]) {
             highlight.color.a() / 4, // 25% opacity for fill
         );
         painter.rect_filled(highlight.rect, 0.0, fill_color);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_special_key_command_keys() {
+        // Basic command keys
+        assert_eq!(parse_special_key("Enter"), Some(egui::Key::Enter));
+        assert_eq!(parse_special_key("return"), Some(egui::Key::Enter));
+        assert_eq!(parse_special_key("Tab"), Some(egui::Key::Tab));
+        assert_eq!(parse_special_key("Backspace"), Some(egui::Key::Backspace));
+        assert_eq!(parse_special_key("Delete"), Some(egui::Key::Delete));
+        assert_eq!(parse_special_key("Escape"), Some(egui::Key::Escape));
+        assert_eq!(parse_special_key("esc"), Some(egui::Key::Escape));
+        assert_eq!(parse_special_key("Space"), Some(egui::Key::Space));
+        assert_eq!(parse_special_key("Insert"), Some(egui::Key::Insert));
+    }
+
+    #[test]
+    fn test_parse_special_key_arrow_keys() {
+        assert_eq!(parse_special_key("ArrowUp"), Some(egui::Key::ArrowUp));
+        assert_eq!(parse_special_key("up"), Some(egui::Key::ArrowUp));
+        assert_eq!(parse_special_key("ArrowDown"), Some(egui::Key::ArrowDown));
+        assert_eq!(parse_special_key("down"), Some(egui::Key::ArrowDown));
+        assert_eq!(parse_special_key("ArrowLeft"), Some(egui::Key::ArrowLeft));
+        assert_eq!(parse_special_key("left"), Some(egui::Key::ArrowLeft));
+        assert_eq!(parse_special_key("ArrowRight"), Some(egui::Key::ArrowRight));
+        assert_eq!(parse_special_key("right"), Some(egui::Key::ArrowRight));
+    }
+
+    #[test]
+    fn test_parse_special_key_navigation_keys() {
+        assert_eq!(parse_special_key("Home"), Some(egui::Key::Home));
+        assert_eq!(parse_special_key("End"), Some(egui::Key::End));
+        assert_eq!(parse_special_key("PageUp"), Some(egui::Key::PageUp));
+        assert_eq!(parse_special_key("PageDown"), Some(egui::Key::PageDown));
+    }
+
+    #[test]
+    fn test_parse_special_key_clipboard_keys() {
+        assert_eq!(parse_special_key("Copy"), Some(egui::Key::Copy));
+        assert_eq!(parse_special_key("Cut"), Some(egui::Key::Cut));
+        assert_eq!(parse_special_key("Paste"), Some(egui::Key::Paste));
+    }
+
+    #[test]
+    fn test_parse_special_key_function_keys() {
+        // F1-F12
+        assert_eq!(parse_special_key("F1"), Some(egui::Key::F1));
+        assert_eq!(parse_special_key("f12"), Some(egui::Key::F12));
+
+        // F13-F35
+        assert_eq!(parse_special_key("F13"), Some(egui::Key::F13));
+        assert_eq!(parse_special_key("F20"), Some(egui::Key::F20));
+        assert_eq!(parse_special_key("F35"), Some(egui::Key::F35));
+    }
+
+    #[test]
+    fn test_parse_special_key_punctuation_by_name() {
+        assert_eq!(parse_special_key("colon"), Some(egui::Key::Colon));
+        assert_eq!(parse_special_key("comma"), Some(egui::Key::Comma));
+        assert_eq!(parse_special_key("backslash"), Some(egui::Key::Backslash));
+        assert_eq!(parse_special_key("slash"), Some(egui::Key::Slash));
+        assert_eq!(parse_special_key("pipe"), Some(egui::Key::Pipe));
+        assert_eq!(
+            parse_special_key("questionmark"),
+            Some(egui::Key::Questionmark)
+        );
+        assert_eq!(
+            parse_special_key("exclamationmark"),
+            Some(egui::Key::Exclamationmark)
+        );
+        assert_eq!(
+            parse_special_key("openbracket"),
+            Some(egui::Key::OpenBracket)
+        );
+        assert_eq!(
+            parse_special_key("closebracket"),
+            Some(egui::Key::CloseBracket)
+        );
+        assert_eq!(
+            parse_special_key("opencurlybracket"),
+            Some(egui::Key::OpenCurlyBracket)
+        );
+        assert_eq!(
+            parse_special_key("closecurlybracket"),
+            Some(egui::Key::CloseCurlyBracket)
+        );
+        assert_eq!(parse_special_key("backtick"), Some(egui::Key::Backtick));
+        assert_eq!(parse_special_key("grave"), Some(egui::Key::Backtick));
+        assert_eq!(parse_special_key("minus"), Some(egui::Key::Minus));
+        assert_eq!(parse_special_key("period"), Some(egui::Key::Period));
+        assert_eq!(parse_special_key("plus"), Some(egui::Key::Plus));
+        assert_eq!(parse_special_key("equals"), Some(egui::Key::Equals));
+        assert_eq!(parse_special_key("semicolon"), Some(egui::Key::Semicolon));
+        assert_eq!(parse_special_key("quote"), Some(egui::Key::Quote));
+    }
+
+    #[test]
+    fn test_parse_special_key_punctuation_by_symbol() {
+        assert_eq!(parse_special_key(":"), Some(egui::Key::Colon));
+        assert_eq!(parse_special_key(","), Some(egui::Key::Comma));
+        assert_eq!(parse_special_key("\\"), Some(egui::Key::Backslash));
+        assert_eq!(parse_special_key("/"), Some(egui::Key::Slash));
+        assert_eq!(parse_special_key("|"), Some(egui::Key::Pipe));
+        assert_eq!(parse_special_key("?"), Some(egui::Key::Questionmark));
+        assert_eq!(parse_special_key("!"), Some(egui::Key::Exclamationmark));
+        assert_eq!(parse_special_key("["), Some(egui::Key::OpenBracket));
+        assert_eq!(parse_special_key("]"), Some(egui::Key::CloseBracket));
+        assert_eq!(parse_special_key("{"), Some(egui::Key::OpenCurlyBracket));
+        assert_eq!(parse_special_key("}"), Some(egui::Key::CloseCurlyBracket));
+        assert_eq!(parse_special_key("`"), Some(egui::Key::Backtick));
+        assert_eq!(parse_special_key("-"), Some(egui::Key::Minus));
+        assert_eq!(parse_special_key("."), Some(egui::Key::Period));
+        assert_eq!(parse_special_key("+"), Some(egui::Key::Plus));
+        assert_eq!(parse_special_key("="), Some(egui::Key::Equals));
+        assert_eq!(parse_special_key(";"), Some(egui::Key::Semicolon));
+        assert_eq!(parse_special_key("'"), Some(egui::Key::Quote));
+    }
+
+    #[test]
+    fn test_parse_special_key_digit_keys() {
+        assert_eq!(parse_special_key("0"), Some(egui::Key::Num0));
+        assert_eq!(parse_special_key("1"), Some(egui::Key::Num1));
+        assert_eq!(parse_special_key("9"), Some(egui::Key::Num9));
+        assert_eq!(parse_special_key("num0"), Some(egui::Key::Num0));
+        assert_eq!(parse_special_key("num5"), Some(egui::Key::Num5));
+    }
+
+    #[test]
+    fn test_parse_special_key_letter_keys() {
+        assert_eq!(parse_special_key("a"), Some(egui::Key::A));
+        assert_eq!(parse_special_key("A"), Some(egui::Key::A));
+        assert_eq!(parse_special_key("z"), Some(egui::Key::Z));
+        assert_eq!(parse_special_key("Z"), Some(egui::Key::Z));
+        assert_eq!(parse_special_key("m"), Some(egui::Key::M));
+    }
+
+    #[test]
+    fn test_parse_special_key_browser_keys() {
+        assert_eq!(
+            parse_special_key("BrowserBack"),
+            Some(egui::Key::BrowserBack)
+        );
+        assert_eq!(
+            parse_special_key("browserback"),
+            Some(egui::Key::BrowserBack)
+        );
+    }
+
+    #[test]
+    fn test_parse_special_key_unknown() {
+        // Unknown keys return None
+        assert_eq!(parse_special_key("unknown"), None);
+        assert_eq!(parse_special_key("ctrl"), None);
+        assert_eq!(parse_special_key("shift"), None);
+        assert_eq!(parse_special_key("alt"), None);
+    }
+
+    #[test]
+    fn test_parse_special_key_case_insensitive() {
+        // All keys should be case-insensitive
+        assert_eq!(parse_special_key("ENTER"), Some(egui::Key::Enter));
+        assert_eq!(parse_special_key("Enter"), Some(egui::Key::Enter));
+        assert_eq!(parse_special_key("enter"), Some(egui::Key::Enter));
+        assert_eq!(parse_special_key("eNtEr"), Some(egui::Key::Enter));
     }
 }
