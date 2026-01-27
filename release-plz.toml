@@ -1,6 +1,4 @@
 [workspace]
-# Only include meaningful commits for release (excludes chore/ci/docs/style)
-release_commits = "^(feat|fix|perf|refactor|test).*"
 # Use cliff.toml for changelog generation (excludes chore/ci/docs/style/build)
 changelog_config = "cliff.toml"
 # Create a single release PR for the entire workspace
