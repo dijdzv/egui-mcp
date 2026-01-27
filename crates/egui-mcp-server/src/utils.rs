@@ -2,6 +2,7 @@
 //!
 //! This module contains helper functions used by tool handlers.
 
+use crate::constants::DEFAULT_COLOR_ALPHA;
 use serde_json::json;
 
 /// Compute the difference between two UI trees
@@ -114,7 +115,7 @@ pub fn compute_tree_diff(
 /// Parse a hex color string to RGBA array
 ///
 /// Supports formats:
-/// - `#RRGGBB` - RGB with default alpha (200)
+/// - `#RRGGBB` - RGB with default alpha (DEFAULT_COLOR_ALPHA)
 /// - `#RRGGBBAA` - RGBA
 pub fn parse_hex_color(s: &str) -> Option<[u8; 4]> {
     let s = s.trim_start_matches('#');
@@ -124,7 +125,7 @@ pub fn parse_hex_color(s: &str) -> Option<[u8; 4]> {
             let r = u8::from_str_radix(&s[0..2], 16).ok()?;
             let g = u8::from_str_radix(&s[2..4], 16).ok()?;
             let b = u8::from_str_radix(&s[4..6], 16).ok()?;
-            Some([r, g, b, 200]) // Default alpha
+            Some([r, g, b, DEFAULT_COLOR_ALPHA])
         }
         8 => {
             // #RRGGBBAA
@@ -144,10 +145,22 @@ mod tests {
 
     #[test]
     fn test_parse_hex_color_rgb() {
-        assert_eq!(parse_hex_color("#ff0000"), Some([255, 0, 0, 200]));
-        assert_eq!(parse_hex_color("#00ff00"), Some([0, 255, 0, 200]));
-        assert_eq!(parse_hex_color("#0000ff"), Some([0, 0, 255, 200]));
-        assert_eq!(parse_hex_color("ff0000"), Some([255, 0, 0, 200]));
+        assert_eq!(
+            parse_hex_color("#ff0000"),
+            Some([255, 0, 0, DEFAULT_COLOR_ALPHA])
+        );
+        assert_eq!(
+            parse_hex_color("#00ff00"),
+            Some([0, 255, 0, DEFAULT_COLOR_ALPHA])
+        );
+        assert_eq!(
+            parse_hex_color("#0000ff"),
+            Some([0, 0, 255, DEFAULT_COLOR_ALPHA])
+        );
+        assert_eq!(
+            parse_hex_color("ff0000"),
+            Some([255, 0, 0, DEFAULT_COLOR_ALPHA])
+        );
     }
 
     #[test]
@@ -170,9 +183,12 @@ mod tests {
 
     #[test]
     fn test_parse_hex_color_postconditions() {
-        // 事後条件: 6文字の有効な入力 → alpha は必ず 200
+        // 事後条件: 6文字の有効な入力 → alpha は必ず DEFAULT_COLOR_ALPHA
         let result = parse_hex_color("#123456").unwrap();
-        assert_eq!(result[3], 200, "6-char hex should have alpha=200");
+        assert_eq!(
+            result[3], DEFAULT_COLOR_ALPHA,
+            "6-char hex should have default alpha"
+        );
 
         // 事後条件: 8文字の有効な入力 → alpha は入力通り
         let result = parse_hex_color("#12345678").unwrap();
