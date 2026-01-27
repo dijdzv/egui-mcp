@@ -466,10 +466,11 @@ struct EguiMcpServer {
     tool_router: ToolRouter<Self>,
     ipc_client: Arc<IpcClient>,
     snapshots: SnapshotStore,
+    app_name: String,
 }
 
 impl EguiMcpServer {
-    fn new() -> Self {
+    fn new(app_name: String) -> Self {
         let tool_router = Self::tool_router();
         let ipc_client = Arc::new(IpcClient::new());
         let snapshots = Arc::new(std::sync::RwLock::new(std::collections::HashMap::new()));
@@ -477,6 +478,7 @@ impl EguiMcpServer {
             tool_router,
             ipc_client,
             snapshots,
+            app_name,
         }
     }
 }
@@ -523,7 +525,7 @@ impl EguiMcpServer {
     async fn get_ui_tree(&self) -> String {
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::get_ui_tree_blocking("demo") {
+            match atspi_client::get_ui_tree_blocking(&self.app_name) {
                 Ok(Some(tree)) => {
                     return serde_json::to_string_pretty(&tree).unwrap_or_else(|e| {
                         json!({
@@ -557,7 +559,7 @@ impl EguiMcpServer {
     ) -> String {
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::find_by_label_blocking("demo", &pattern, false) {
+            match atspi_client::find_by_label_blocking(&self.app_name, &pattern, false) {
                 Ok(elements) => {
                     return serde_json::to_string_pretty(&json!({
                         "count": elements.len(),
@@ -593,7 +595,7 @@ impl EguiMcpServer {
     ) -> String {
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::find_by_label_blocking("demo", &pattern, true) {
+            match atspi_client::find_by_label_blocking(&self.app_name, &pattern, true) {
                 Ok(elements) => {
                     return serde_json::to_string_pretty(&json!({
                         "count": elements.len(),
@@ -631,7 +633,7 @@ impl EguiMcpServer {
     ) -> String {
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::find_by_role_blocking("demo", &role) {
+            match atspi_client::find_by_role_blocking(&self.app_name, &role) {
                 Ok(elements) => {
                     return serde_json::to_string_pretty(&json!({
                         "count": elements.len(),
@@ -680,7 +682,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::get_element_blocking("demo", id) {
+            match atspi_client::get_element_blocking(&self.app_name, id) {
                 Ok(Some(element)) => {
                     return serde_json::to_string_pretty(&element).unwrap_or_else(|e| {
                         json!({
@@ -732,7 +734,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::click_element_blocking("demo", id) {
+            match atspi_client::click_element_blocking(&self.app_name, id) {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Clicked element with id {}", id)
@@ -783,7 +785,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::set_text_blocking("demo", id, &text) {
+            match atspi_client::set_text_blocking(&self.app_name, id, &text) {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Set text on element with id {}", id)
@@ -1106,7 +1108,7 @@ impl EguiMcpServer {
         #[cfg(target_os = "linux")]
         {
             // First, get the element bounds
-            match atspi_client::get_bounds_blocking("demo", id) {
+            match atspi_client::get_bounds_blocking(&self.app_name, id) {
                 Ok(Some(bounds)) => {
                     // Calculate center of the element
                     let start_x = bounds.x + bounds.width / 2.0;
@@ -1199,7 +1201,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::get_bounds_blocking("demo", id) {
+            match atspi_client::get_bounds_blocking(&self.app_name, id) {
                 Ok(Some(bounds)) => json!({
                     "x": bounds.x,
                     "y": bounds.y,
@@ -1252,7 +1254,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::focus_element_blocking("demo", id) {
+            match atspi_client::focus_element_blocking(&self.app_name, id) {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Focused element with id {}", id)
@@ -1301,7 +1303,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::scroll_to_element_blocking("demo", id) {
+            match atspi_client::scroll_to_element_blocking(&self.app_name, id) {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Scrolled element {} into view", id)
@@ -1356,7 +1358,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::get_value_blocking("demo", id) {
+            match atspi_client::get_value_blocking(&self.app_name, id) {
                 Ok(Some(value_info)) => {
                     serde_json::to_string_pretty(&value_info).unwrap_or_else(|e| {
                         json!({
@@ -1411,7 +1413,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::set_value_blocking("demo", id, value) {
+            match atspi_client::set_value_blocking(&self.app_name, id, value) {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Set value to {} on element {}", value, id)
@@ -1466,7 +1468,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::select_item_blocking("demo", id, index) {
+            match atspi_client::select_item_blocking(&self.app_name, id, index) {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Selected item at index {} in element {}", index, id)
@@ -1517,7 +1519,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::deselect_item_blocking("demo", id, index) {
+            match atspi_client::deselect_item_blocking(&self.app_name, id, index) {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Deselected item at index {} in element {}", index, id)
@@ -1568,7 +1570,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::get_selected_count_blocking("demo", id) {
+            match atspi_client::get_selected_count_blocking(&self.app_name, id) {
                 Ok(count) => json!({
                     "count": count,
                     "message": format!("Element {} has {} selected items", id, count)
@@ -1614,7 +1616,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::select_all_blocking("demo", id) {
+            match atspi_client::select_all_blocking(&self.app_name, id) {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Selected all items in element {}", id)
@@ -1665,7 +1667,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::clear_selection_blocking("demo", id) {
+            match atspi_client::clear_selection_blocking(&self.app_name, id) {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Cleared all selections in element {}", id)
@@ -1720,7 +1722,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::get_text_blocking("demo", id) {
+            match atspi_client::get_text_blocking(&self.app_name, id) {
                 Ok(Some(text_info)) => {
                     serde_json::to_string_pretty(&text_info).unwrap_or_else(|e| {
                         json!({
@@ -1775,7 +1777,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::get_text_selection_blocking("demo", id) {
+            match atspi_client::get_text_selection_blocking(&self.app_name, id) {
                 Ok(Some(selection)) => {
                     serde_json::to_string_pretty(&selection).unwrap_or_else(|e| {
                         json!({
@@ -1830,7 +1832,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::set_text_selection_blocking("demo", id, start, end) {
+            match atspi_client::set_text_selection_blocking(&self.app_name, id, start, end) {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Set text selection from {} to {} on element {}", start, end, id)
@@ -1881,7 +1883,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::get_caret_position_blocking("demo", id) {
+            match atspi_client::get_caret_position_blocking(&self.app_name, id) {
                 Ok(offset) => json!({
                     "offset": offset,
                     "message": format!("Caret at position {} in element {}", offset, id)
@@ -1927,7 +1929,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::set_caret_position_blocking("demo", id, offset) {
+            match atspi_client::set_caret_position_blocking(&self.app_name, id, offset) {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Set caret to position {} in element {}", offset, id)
@@ -1980,7 +1982,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::is_visible_blocking("demo", id) {
+            match atspi_client::is_visible_blocking(&self.app_name, id) {
                 Ok(visible) => json!({
                     "id": id,
                     "visible": visible
@@ -2024,7 +2026,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::is_enabled_blocking("demo", id) {
+            match atspi_client::is_enabled_blocking(&self.app_name, id) {
                 Ok(enabled) => json!({
                     "id": id,
                     "enabled": enabled
@@ -2068,7 +2070,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::is_focused_blocking("demo", id) {
+            match atspi_client::is_focused_blocking(&self.app_name, id) {
                 Ok(focused) => json!({
                     "id": id,
                     "focused": focused
@@ -2114,7 +2116,7 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::is_checked_blocking("demo", id) {
+            match atspi_client::is_checked_blocking(&self.app_name, id) {
                 Ok(checked) => json!({
                     "id": id,
                     "checked": checked,
@@ -2170,7 +2172,7 @@ impl EguiMcpServer {
         #[cfg(target_os = "linux")]
         {
             // First get element bounds
-            let bounds = match atspi_client::get_bounds_blocking("demo", id) {
+            let bounds = match atspi_client::get_bounds_blocking(&self.app_name, id) {
                 Ok(Some(b)) => b,
                 Ok(None) => {
                     return Content::text(json!({
@@ -2305,7 +2307,7 @@ impl EguiMcpServer {
         #[cfg(target_os = "linux")]
         {
             loop {
-                let results = atspi_client::find_by_label_blocking("demo", &pattern, false);
+                let results = atspi_client::find_by_label_blocking(&self.app_name, &pattern, false);
                 let found = results.map(|r| !r.is_empty()).unwrap_or(false);
 
                 if found == appear {
@@ -2374,10 +2376,12 @@ impl EguiMcpServer {
         {
             loop {
                 let current_state = match state.to_lowercase().as_str() {
-                    "visible" => atspi_client::is_visible_blocking("demo", id).ok(),
-                    "enabled" => atspi_client::is_enabled_blocking("demo", id).ok(),
-                    "focused" => atspi_client::is_focused_blocking("demo", id).ok(),
-                    "checked" => atspi_client::is_checked_blocking("demo", id).ok().flatten(),
+                    "visible" => atspi_client::is_visible_blocking(&self.app_name, id).ok(),
+                    "enabled" => atspi_client::is_enabled_blocking(&self.app_name, id).ok(),
+                    "focused" => atspi_client::is_focused_blocking(&self.app_name, id).ok(),
+                    "checked" => atspi_client::is_checked_blocking(&self.app_name, id)
+                        .ok()
+                        .flatten(),
                     _ => {
                         return json!({
                             "error": "invalid_state",
@@ -2754,7 +2758,7 @@ impl EguiMcpServer {
         #[cfg(target_os = "linux")]
         {
             // Get element bounds via AT-SPI
-            let bounds = atspi_client::get_bounds_blocking("demo", id);
+            let bounds = atspi_client::get_bounds_blocking(&self.app_name, id);
             match bounds {
                 Ok(Some(rect)) => {
                     // Send highlight request via IPC
@@ -2835,7 +2839,7 @@ impl EguiMcpServer {
         #[cfg(target_os = "linux")]
         {
             // Get current UI tree
-            match atspi_client::get_ui_tree_blocking("demo") {
+            match atspi_client::get_ui_tree_blocking(&self.app_name) {
                 Ok(Some(tree)) => {
                     // Serialize to JSON
                     let json = serde_json::to_string(&tree).unwrap_or_default();
@@ -3021,7 +3025,7 @@ impl EguiMcpServer {
             };
 
             // Get current tree
-            match atspi_client::get_ui_tree_blocking("demo") {
+            match atspi_client::get_ui_tree_blocking(&self.app_name) {
                 Ok(Some(current_tree)) => {
                     let diff = compute_tree_diff(&saved_tree, &current_tree);
                     json!({
@@ -3426,8 +3430,18 @@ async fn main() -> Result<()> {
         }
     }
 
+    // Get application name from environment variable
+    let app_name = std::env::var("EGUI_MCP_APP_NAME").map_err(|_| {
+        anyhow::anyhow!(
+            "EGUI_MCP_APP_NAME environment variable not set. \
+             Please set it in .mcp.json env section."
+        )
+    })?;
+
+    tracing::info!("Target application: {}", app_name);
+
     // Create and run the server
-    let server = EguiMcpServer::new();
+    let server = EguiMcpServer::new(app_name);
     let service = server.serve(stdio()).await?;
 
     tracing::info!("Server started, waiting for connections...");
