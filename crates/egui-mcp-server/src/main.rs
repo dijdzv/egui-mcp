@@ -5,7 +5,10 @@
 //! - AT-SPI (Linux accessibility): UI tree, element search, clicks, text input
 //! - IPC (direct client): Screenshots, coordinate-based input, keyboard, scroll
 
+mod guide;
 mod ipc_client;
+mod requests;
+mod utils;
 
 #[cfg(target_os = "linux")]
 mod atspi_client;
@@ -14,14 +17,14 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use egui_mcp_protocol::MouseButton;
 use ipc_client::IpcClient;
+use requests::*;
 use rmcp::{
     ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo},
-    schemars, tool, tool_handler, tool_router,
+    tool, tool_handler, tool_router,
     transport::stdio,
 };
-use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
@@ -42,438 +45,6 @@ enum Commands {
     Serve,
     /// Show setup guide for MCP client and egui app integration
     Guide,
-}
-
-/// Request for find_by_label tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct FindByLabelRequest {
-    #[schemars(description = "Pattern to match against labels (substring match)")]
-    pattern: String,
-}
-
-/// Request for find_by_label_exact tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct FindByLabelExactRequest {
-    #[schemars(description = "Exact label text to match")]
-    pattern: String,
-}
-
-/// Request for find_by_role tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct FindByRoleRequest {
-    #[schemars(
-        description = "Role to search for (e.g., 'Button', 'TextInput', 'CheckBox', 'Label')"
-    )]
-    role: String,
-}
-
-/// Request for get_element tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct GetElementRequest {
-    #[schemars(description = "Node ID to retrieve (as string)")]
-    id: String,
-}
-
-/// Request for click_element tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct ClickElementRequest {
-    #[schemars(description = "Node ID of the element to click (as string)")]
-    id: String,
-}
-
-/// Request for set_text tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct SetTextRequest {
-    #[schemars(description = "Node ID of the text input element (as string)")]
-    id: String,
-    #[schemars(description = "Text content to set")]
-    text: String,
-}
-
-/// Request for click_at tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct ClickAtRequest {
-    #[schemars(description = "X coordinate")]
-    x: f32,
-    #[schemars(description = "Y coordinate")]
-    y: f32,
-    #[schemars(description = "Mouse button: 'left', 'right', or 'middle' (default: 'left')")]
-    button: Option<String>,
-}
-
-/// Request for take_screenshot tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct TakeScreenshotRequest {
-    #[schemars(
-        description = "If true, save screenshot to a temp file and return the path. If false (default), return base64-encoded data."
-    )]
-    save_to_file: Option<bool>,
-}
-
-/// Request for keyboard_input tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct KeyboardInputRequest {
-    #[schemars(description = "Key to send (e.g., 'a', 'Enter', 'Escape', 'Tab')")]
-    key: String,
-}
-
-/// Request for scroll tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct ScrollRequest {
-    #[schemars(description = "X coordinate where to scroll")]
-    x: f32,
-    #[schemars(description = "Y coordinate where to scroll")]
-    y: f32,
-    #[schemars(description = "Horizontal scroll delta (positive = right)")]
-    delta_x: Option<f32>,
-    #[schemars(description = "Vertical scroll delta (positive = down)")]
-    delta_y: Option<f32>,
-}
-
-/// Request for hover tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct HoverRequest {
-    #[schemars(description = "X coordinate to move mouse to")]
-    x: f32,
-    #[schemars(description = "Y coordinate to move mouse to")]
-    y: f32,
-}
-
-/// Request for drag tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct DragRequest {
-    #[schemars(description = "Starting X coordinate")]
-    start_x: f32,
-    #[schemars(description = "Starting Y coordinate")]
-    start_y: f32,
-    #[schemars(description = "Ending X coordinate")]
-    end_x: f32,
-    #[schemars(description = "Ending Y coordinate")]
-    end_y: f32,
-    #[schemars(description = "Mouse button: 'left', 'right', or 'middle' (default: 'left')")]
-    button: Option<String>,
-}
-
-/// Request for double_click tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct DoubleClickRequest {
-    #[schemars(description = "X coordinate")]
-    x: f32,
-    #[schemars(description = "Y coordinate")]
-    y: f32,
-    #[schemars(description = "Mouse button: 'left', 'right', or 'middle' (default: 'left')")]
-    button: Option<String>,
-}
-
-// ============================================================================
-// Priority 1 (remaining): drag_element
-// ============================================================================
-
-/// Request for drag_element tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct DragElementRequest {
-    #[schemars(description = "Node ID of the element to drag (as string)")]
-    source_id: String,
-    #[schemars(description = "Ending X coordinate")]
-    end_x: f32,
-    #[schemars(description = "Ending Y coordinate")]
-    end_y: f32,
-    #[schemars(description = "Mouse button: 'left', 'right', or 'middle' (default: 'left')")]
-    button: Option<String>,
-}
-
-// ============================================================================
-// Priority 2: Element Information (AT-SPI Component)
-// ============================================================================
-
-/// Request for get_bounds tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct GetBoundsRequest {
-    #[schemars(description = "Node ID of the element (as string)")]
-    id: String,
-}
-
-/// Request for focus_element tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct FocusElementRequest {
-    #[schemars(description = "Node ID of the element to focus (as string)")]
-    id: String,
-}
-
-/// Request for scroll_to_element tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct ScrollToElementRequest {
-    #[schemars(description = "Node ID of the element to scroll into view (as string)")]
-    id: String,
-}
-
-// ============================================================================
-// Priority 3: Value Operations (AT-SPI Value)
-// ============================================================================
-
-/// Request for get_value tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct GetValueRequest {
-    #[schemars(description = "Node ID of the element (as string)")]
-    id: String,
-}
-
-/// Request for set_value tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct SetValueRequest {
-    #[schemars(description = "Node ID of the element (as string)")]
-    id: String,
-    #[schemars(description = "Value to set (number)")]
-    value: f64,
-}
-
-// ============================================================================
-// Priority 4: Selection Operations (AT-SPI Selection)
-// ============================================================================
-
-/// Request for select_item tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct SelectItemRequest {
-    #[schemars(description = "Node ID of the container element (as string)")]
-    id: String,
-    #[schemars(description = "Index of the item to select (0-based)")]
-    index: i32,
-}
-
-/// Request for deselect_item tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct DeselectItemRequest {
-    #[schemars(description = "Node ID of the container element (as string)")]
-    id: String,
-    #[schemars(description = "Index of the item to deselect (0-based)")]
-    index: i32,
-}
-
-/// Request for get_selected_count tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct GetSelectedCountRequest {
-    #[schemars(description = "Node ID of the container element (as string)")]
-    id: String,
-}
-
-/// Request for select_all/clear_selection tools
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct SelectionContainerRequest {
-    #[schemars(description = "Node ID of the container element (as string)")]
-    id: String,
-}
-
-// ============================================================================
-// Priority 5: Text Operations (AT-SPI Text)
-// ============================================================================
-
-/// Request for get_text tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct GetTextRequest {
-    #[schemars(description = "Node ID of the element (as string)")]
-    id: String,
-}
-
-/// Request for get_text_selection tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct GetTextSelectionRequest {
-    #[schemars(description = "Node ID of the element (as string)")]
-    id: String,
-}
-
-/// Request for set_text_selection tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct SetTextSelectionRequest {
-    #[schemars(description = "Node ID of the element (as string)")]
-    id: String,
-    #[schemars(description = "Start offset of the selection")]
-    start: i32,
-    #[schemars(description = "End offset of the selection")]
-    end: i32,
-}
-
-/// Request for get_caret_position tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct GetCaretPositionRequest {
-    #[schemars(description = "Node ID of the element (as string)")]
-    id: String,
-}
-
-/// Request for set_caret_position tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct SetCaretPositionRequest {
-    #[schemars(description = "Node ID of the element (as string)")]
-    id: String,
-    #[schemars(description = "Offset position for the caret")]
-    offset: i32,
-}
-
-// ============================================================================
-// Phase 7: Advanced Features
-// ============================================================================
-
-/// Request for state check tools (is_visible, is_enabled, is_focused, is_checked)
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct ElementIdOnlyRequest {
-    #[schemars(description = "Node ID of the element (as string)")]
-    id: String,
-}
-
-/// Request for screenshot_element tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct ScreenshotElementRequest {
-    #[schemars(description = "Node ID of the element to screenshot (as string)")]
-    id: String,
-    #[schemars(
-        description = "If true, save screenshot to a temp file and return the path. If false (default), return base64-encoded data."
-    )]
-    save_to_file: Option<bool>,
-}
-
-/// Request for screenshot_region tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct ScreenshotRegionRequest {
-    #[schemars(description = "X coordinate of the region")]
-    x: f32,
-    #[schemars(description = "Y coordinate of the region")]
-    y: f32,
-    #[schemars(description = "Width of the region")]
-    width: f32,
-    #[schemars(description = "Height of the region")]
-    height: f32,
-    #[schemars(
-        description = "If true, save screenshot to a temp file and return the path. If false (default), return base64-encoded data."
-    )]
-    save_to_file: Option<bool>,
-}
-
-/// Request for wait_for_element tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct WaitForElementRequest {
-    #[schemars(description = "Label pattern to match (substring match)")]
-    pattern: String,
-    #[schemars(
-        description = "If true (default), wait for element to appear. If false, wait for element to disappear."
-    )]
-    appear: Option<bool>,
-    #[schemars(description = "Timeout in milliseconds (default: 5000)")]
-    timeout_ms: Option<u64>,
-}
-
-/// Request for wait_for_state tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct WaitForStateRequest {
-    #[schemars(description = "Node ID of the element (as string)")]
-    id: String,
-    #[schemars(description = "State to wait for: 'visible', 'enabled', 'focused', or 'checked'")]
-    state: String,
-    #[schemars(description = "Expected state value (default: true)")]
-    expected: Option<bool>,
-    #[schemars(description = "Timeout in milliseconds (default: 5000)")]
-    timeout_ms: Option<u64>,
-}
-
-// ============================================================================
-// Phase 8: Testing & Debugging Features
-// ============================================================================
-
-/// Request for compare_screenshots tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct CompareScreenshotsRequest {
-    #[schemars(description = "First screenshot as base64-encoded PNG")]
-    base64_a: Option<String>,
-    #[schemars(description = "Second screenshot as base64-encoded PNG")]
-    base64_b: Option<String>,
-    #[schemars(description = "Path to first screenshot file (alternative to base64_a)")]
-    path_a: Option<String>,
-    #[schemars(description = "Path to second screenshot file (alternative to base64_b)")]
-    path_b: Option<String>,
-    #[schemars(
-        description = "Comparison algorithm: 'hybrid' (default), 'mssim' (structural), 'rms' (pixel-wise)"
-    )]
-    algorithm: Option<String>,
-}
-
-/// Request for diff_screenshots tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct DiffScreenshotsRequest {
-    #[schemars(description = "First screenshot as base64-encoded PNG")]
-    base64_a: Option<String>,
-    #[schemars(description = "Second screenshot as base64-encoded PNG")]
-    base64_b: Option<String>,
-    #[schemars(description = "Path to first screenshot file (alternative to base64_a)")]
-    path_a: Option<String>,
-    #[schemars(description = "Path to second screenshot file (alternative to base64_b)")]
-    path_b: Option<String>,
-    #[schemars(
-        description = "If true, save diff image to a temp file and return the path. If false (default), return base64-encoded data."
-    )]
-    save_to_file: Option<bool>,
-}
-
-/// Request for highlight_element tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct HighlightElementRequest {
-    #[schemars(description = "Node ID of the element to highlight (as string)")]
-    id: String,
-    #[schemars(
-        description = "Highlight color as hex string (e.g., '#ff0000' or '#ff000080' with alpha). Default: red"
-    )]
-    color: Option<String>,
-    #[schemars(
-        description = "Duration in milliseconds. 0 = highlight until cleared. Default: 3000"
-    )]
-    duration_ms: Option<u64>,
-}
-
-/// Request for save_snapshot tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct SaveSnapshotRequest {
-    #[schemars(description = "Name to identify this snapshot")]
-    name: String,
-}
-
-/// Request for load_snapshot tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct LoadSnapshotRequest {
-    #[schemars(description = "Name of the snapshot to load")]
-    name: String,
-}
-
-/// Request for diff_snapshots tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct DiffSnapshotsRequest {
-    #[schemars(description = "Name of the first snapshot")]
-    name_a: String,
-    #[schemars(description = "Name of the second snapshot")]
-    name_b: String,
-}
-
-/// Request for diff_current tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct DiffCurrentRequest {
-    #[schemars(description = "Name of the snapshot to compare with current state")]
-    name: String,
-}
-
-/// Request for get_logs tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct GetLogsRequest {
-    #[schemars(
-        description = "Minimum log level to return: 'TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR'. If omitted, returns all levels."
-    )]
-    level: Option<String>,
-    #[schemars(description = "Maximum number of entries to return (default: all)")]
-    limit: Option<usize>,
-}
-
-/// Request for start_perf_recording tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct StartPerfRecordingRequest {
-    #[schemars(
-        description = "Duration to record in milliseconds. 0 = until get_perf_report is called (default: 0)"
-    )]
-    duration_ms: Option<u64>,
 }
 
 /// Stored snapshot data (serialized UiTree)
@@ -3070,7 +2641,7 @@ impl EguiMcpServer {
 
         // Parse color from hex string
         let color = req.color.as_deref().unwrap_or("#ff0000ff");
-        let color = parse_hex_color(color).unwrap_or([255, 0, 0, 200]); // Default: red with alpha
+        let color = utils::parse_hex_color(color).unwrap_or([255, 0, 0, 200]); // Default: red with alpha
 
         let duration_ms = req.duration_ms.unwrap_or(3000);
 
@@ -3313,7 +2884,7 @@ impl EguiMcpServer {
             }
         };
 
-        let diff = compute_tree_diff(&tree_a, &tree_b);
+        let diff = utils::compute_tree_diff(&tree_a, &tree_b);
         json!({
             "name_a": req.name_a,
             "name_b": req.name_b,
@@ -3376,7 +2947,7 @@ impl EguiMcpServer {
             };
             match client.get_ui_tree_by_app_name(&self.app_name).await {
                 Ok(Some(current_tree)) => {
-                    let diff = compute_tree_diff(&saved_tree, &current_tree);
+                    let diff = utils::compute_tree_diff(&saved_tree, &current_tree);
                     json!({
                         "snapshot_name": req.name,
                         "diff": diff
@@ -3531,136 +3102,6 @@ impl EguiMcpServer {
     }
 }
 
-/// Compute the difference between two UI trees
-fn compute_tree_diff(
-    tree_a: &egui_mcp_protocol::UiTree,
-    tree_b: &egui_mcp_protocol::UiTree,
-) -> serde_json::Value {
-    use std::collections::HashMap;
-
-    let map_a: HashMap<u64, &egui_mcp_protocol::NodeInfo> =
-        tree_a.nodes.iter().map(|n| (n.id, n)).collect();
-    let map_b: HashMap<u64, &egui_mcp_protocol::NodeInfo> =
-        tree_b.nodes.iter().map(|n| (n.id, n)).collect();
-
-    let mut added = Vec::new();
-    let mut removed = Vec::new();
-    let mut modified = Vec::new();
-
-    // Find added nodes (in B but not in A)
-    for (id, node) in &map_b {
-        if !map_a.contains_key(id) {
-            added.push(json!({
-                "id": id,
-                "role": node.role,
-                "label": node.label
-            }));
-        }
-    }
-
-    // Find removed nodes (in A but not in B)
-    for (id, node) in &map_a {
-        if !map_b.contains_key(id) {
-            removed.push(json!({
-                "id": id,
-                "role": node.role,
-                "label": node.label
-            }));
-        }
-    }
-
-    // Find modified nodes (in both but different)
-    for (id, node_a) in &map_a {
-        if let Some(node_b) = map_b.get(id) {
-            let mut changes = Vec::new();
-
-            if node_a.role != node_b.role {
-                changes.push(json!({
-                    "field": "role",
-                    "old": node_a.role,
-                    "new": node_b.role
-                }));
-            }
-            if node_a.label != node_b.label {
-                changes.push(json!({
-                    "field": "label",
-                    "old": node_a.label,
-                    "new": node_b.label
-                }));
-            }
-            if node_a.value != node_b.value {
-                changes.push(json!({
-                    "field": "value",
-                    "old": node_a.value,
-                    "new": node_b.value
-                }));
-            }
-            if node_a.toggled != node_b.toggled {
-                changes.push(json!({
-                    "field": "toggled",
-                    "old": node_a.toggled,
-                    "new": node_b.toggled
-                }));
-            }
-            if node_a.disabled != node_b.disabled {
-                changes.push(json!({
-                    "field": "disabled",
-                    "old": node_a.disabled,
-                    "new": node_b.disabled
-                }));
-            }
-            if node_a.focused != node_b.focused {
-                changes.push(json!({
-                    "field": "focused",
-                    "old": node_a.focused,
-                    "new": node_b.focused
-                }));
-            }
-
-            if !changes.is_empty() {
-                modified.push(json!({
-                    "id": id,
-                    "role": node_a.role,
-                    "label": node_a.label,
-                    "changes": changes
-                }));
-            }
-        }
-    }
-
-    json!({
-        "added_count": added.len(),
-        "removed_count": removed.len(),
-        "modified_count": modified.len(),
-        "added": added,
-        "removed": removed,
-        "modified": modified
-    })
-}
-
-/// Parse a hex color string to RGBA array
-fn parse_hex_color(s: &str) -> Option<[u8; 4]> {
-    let s = s.trim_start_matches('#');
-    match s.len() {
-        6 => {
-            // #RRGGBB
-            let r = u8::from_str_radix(&s[0..2], 16).ok()?;
-            let g = u8::from_str_radix(&s[2..4], 16).ok()?;
-            let b = u8::from_str_radix(&s[4..6], 16).ok()?;
-            Some([r, g, b, 200]) // Default alpha
-        }
-        8 => {
-            // #RRGGBBAA
-            let r = u8::from_str_radix(&s[0..2], 16).ok()?;
-            let g = u8::from_str_radix(&s[2..4], 16).ok()?;
-            let b = u8::from_str_radix(&s[4..6], 16).ok()?;
-            let a = u8::from_str_radix(&s[6..8], 16).ok()?;
-            Some([r, g, b, a])
-        }
-        _ => None,
-    }
-}
-
 impl EguiMcpServer {
     /// Save base64-encoded PNG data to a temp file and return Content with file path
     fn save_screenshot_to_file(&self, data: &str) -> Content {
@@ -3759,141 +3200,6 @@ impl ServerHandler for EguiMcpServer {
     }
 }
 
-fn print_guide() {
-    let version = env!("CARGO_PKG_VERSION");
-    print!(
-        r#"
-================================================================================
-                        egui-mcp-server Setup Guide
-                              Version {version}
-================================================================================
-
-This guide explains how to set up egui-mcp for UI automation with MCP clients
-like Claude Code.
-
---------------------------------------------------------------------------------
-STEP 1: Add egui-mcp-client to your egui application
---------------------------------------------------------------------------------
-
-Add the dependency to your Cargo.toml:
-
-    [dependencies]
-    egui-mcp-client = "{version}"
-
-Initialize the client in your app:
-
-    use egui_mcp_client::McpClient;
-
-    struct MyApp {{
-        mcp_client: McpClient,
-        // ... your other fields
-    }}
-
-    impl MyApp {{
-        fn new(cc: &eframe::CreationContext<'_>) -> Self {{
-            Self {{
-                mcp_client: McpClient::new(cc),
-                // ...
-            }}
-        }}
-    }}
-
-    impl eframe::App for MyApp {{
-        fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {{
-            // Call this at the end of your update function
-            self.mcp_client.update(ctx, frame);
-
-            // ... your UI code
-        }}
-    }}
-
---------------------------------------------------------------------------------
-STEP 2: Configure MCP client (e.g., Claude Code)
---------------------------------------------------------------------------------
-
-Create or edit `.mcp.json` in your project root:
-
-    {{
-      "mcpServers": {{
-        "egui-mcp": {{
-          "command": "egui-mcp-server",
-          "args": [],
-          "env": {{
-            "XDG_RUNTIME_DIR": "/mnt/wslg/runtime-dir",
-            "EGUI_MCP_APP_NAME": "your-app-name"
-          }}
-        }}
-      }}
-    }}
-
-Replace "your-app-name" with your egui application's window title.
-
-For cargo-based development, use:
-
-    {{
-      "mcpServers": {{
-        "egui-mcp": {{
-          "command": "cargo",
-          "args": ["run", "-p", "egui-mcp-server"],
-          "env": {{
-            "XDG_RUNTIME_DIR": "/mnt/wslg/runtime-dir",
-            "EGUI_MCP_APP_NAME": "your-app-name"
-          }}
-        }}
-      }}
-    }}
-
---------------------------------------------------------------------------------
-STEP 3: Run your application
---------------------------------------------------------------------------------
-
-1. Start your egui application (with egui-mcp-client integrated)
-2. The MCP server will automatically connect when Claude Code starts
-3. Use natural language to interact with your UI:
-   - "Click the Submit button"
-   - "Type 'hello' in the text field"
-   - "Take a screenshot"
-   - "Find all buttons on the screen"
-
---------------------------------------------------------------------------------
-ENVIRONMENT VARIABLES
---------------------------------------------------------------------------------
-
-  EGUI_MCP_APP_NAME    (Required) Target application's window title
-  XDG_RUNTIME_DIR      Runtime directory for IPC socket (WSL: /mnt/wslg/runtime-dir)
-  RUST_LOG             Log level (e.g., "info", "debug")
-
---------------------------------------------------------------------------------
-AVAILABLE MCP TOOLS
---------------------------------------------------------------------------------
-
-UI Tree & Search:
-  - get_ui_tree       Get the full accessibility tree
-  - find_by_label     Search elements by label (substring match)
-  - find_by_role      Search elements by role (Button, TextInput, etc.)
-  - get_element       Get detailed info about a specific element
-
-Interaction:
-  - click_element     Click an element by ID
-  - click_at          Click at specific coordinates
-  - set_text          Set text in a text input
-  - keyboard_input    Send keyboard input
-  - scroll            Scroll at a position
-  - hover             Move mouse to position
-  - drag              Drag from one position to another
-
-Screenshots:
-  - take_screenshot   Capture the application window
-  - compare_screenshots  Compare two screenshots for similarity
-  - diff_screenshots     Generate visual diff between screenshots
-
-For more information, visit: https://github.com/dijdzv/egui-mcp
-
-================================================================================
-"#
-    );
-}
-
 async fn run_server() -> Result<()> {
     // Initialize logging to stderr (stdout is used for MCP communication)
     tracing_subscriber::registry()
@@ -3940,7 +3246,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Guide => {
-            print_guide();
+            guide::print_guide();
             Ok(())
         }
         Commands::Serve => run_server().await,
