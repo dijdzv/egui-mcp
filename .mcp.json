@@ -4,7 +4,8 @@
       "command": "cargo",
       "args": ["run", "-p", "egui-mcp-server", "--manifest-path", "/home/dijdzv/github/egui-mcp/Cargo.toml"],
       "env": {
-        "XDG_RUNTIME_DIR": "/mnt/wslg/runtime-dir"
+        "XDG_RUNTIME_DIR": "/mnt/wslg/runtime-dir",
+        "EGUI_MCP_APP_NAME": "demo"
       }
     }
   }
