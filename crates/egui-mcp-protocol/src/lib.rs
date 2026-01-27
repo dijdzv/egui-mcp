@@ -422,4 +422,168 @@ mod tests {
         assert!(json.contains("KeyboardInput"));
         assert!(json.contains("Enter"));
     }
+
+    #[test]
+    fn test_request_roundtrip_drag() {
+        let req = Request::Drag {
+            start_x: 10.0,
+            start_y: 20.0,
+            end_x: 100.0,
+            end_y: 200.0,
+            button: MouseButton::Left,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let decoded: Request = serde_json::from_str(&json).unwrap();
+        if let Request::Drag {
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            button,
+        } = decoded
+        {
+            assert_eq!(start_x, 10.0);
+            assert_eq!(start_y, 20.0);
+            assert_eq!(end_x, 100.0);
+            assert_eq!(end_y, 200.0);
+            assert!(matches!(button, MouseButton::Left));
+        } else {
+            panic!("Expected Drag request");
+        }
+    }
+
+    #[test]
+    fn test_request_roundtrip_scroll() {
+        let req = Request::Scroll {
+            x: 50.0,
+            y: 60.0,
+            delta_x: -10.0,
+            delta_y: 20.0,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let decoded: Request = serde_json::from_str(&json).unwrap();
+        if let Request::Scroll {
+            x,
+            y,
+            delta_x,
+            delta_y,
+        } = decoded
+        {
+            assert_eq!(x, 50.0);
+            assert_eq!(y, 60.0);
+            assert_eq!(delta_x, -10.0);
+            assert_eq!(delta_y, 20.0);
+        } else {
+            panic!("Expected Scroll request");
+        }
+    }
+
+    #[test]
+    fn test_response_roundtrip_screenshot() {
+        let resp = Response::Screenshot {
+            data: "base64data".to_string(),
+            format: "png".to_string(),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let decoded: Response = serde_json::from_str(&json).unwrap();
+        if let Response::Screenshot { data, format } = decoded {
+            assert_eq!(data, "base64data");
+            assert_eq!(format, "png");
+        } else {
+            panic!("Expected Screenshot response");
+        }
+    }
+
+    #[test]
+    fn test_response_roundtrip_error() {
+        let resp = Response::Error {
+            message: "Something went wrong".to_string(),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let decoded: Response = serde_json::from_str(&json).unwrap();
+        if let Response::Error { message } = decoded {
+            assert_eq!(message, "Something went wrong");
+        } else {
+            panic!("Expected Error response");
+        }
+    }
+
+    #[test]
+    fn test_node_info_serialization() {
+        let node = NodeInfo {
+            id: 42,
+            role: "Button".to_string(),
+            label: Some("Click me".to_string()),
+            value: None,
+            bounds: Some(Rect {
+                x: 10.0,
+                y: 20.0,
+                width: 100.0,
+                height: 50.0,
+            }),
+            children: vec![1, 2, 3],
+            toggled: Some(true),
+            disabled: false,
+            focused: true,
+        };
+        let json = serde_json::to_string(&node).unwrap();
+        let decoded: NodeInfo = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(decoded.id, 42);
+        assert_eq!(decoded.role, "Button");
+        assert_eq!(decoded.label, Some("Click me".to_string()));
+        assert!(decoded.bounds.is_some());
+        assert_eq!(decoded.children, vec![1, 2, 3]);
+        assert_eq!(decoded.toggled, Some(true));
+        assert!(!decoded.disabled);
+        assert!(decoded.focused);
+    }
+
+    #[test]
+    fn test_log_entry_serialization() {
+        let entry = LogEntry {
+            level: "INFO".to_string(),
+            target: "my_app".to_string(),
+            message: "Hello world".to_string(),
+            timestamp_ms: 1234567890,
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        let decoded: LogEntry = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(decoded.level, "INFO");
+        assert_eq!(decoded.target, "my_app");
+        assert_eq!(decoded.message, "Hello world");
+        assert_eq!(decoded.timestamp_ms, 1234567890);
+    }
+
+    #[test]
+    fn test_frame_stats_serialization() {
+        let stats = FrameStats {
+            fps: 60.0,
+            frame_time_ms: 16.67,
+            frame_time_min_ms: 15.0,
+            frame_time_max_ms: 20.0,
+            sample_count: 100,
+        };
+        let json = serde_json::to_string(&stats).unwrap();
+        let decoded: FrameStats = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(decoded.fps, 60.0);
+        assert_eq!(decoded.sample_count, 100);
+    }
+
+    #[test]
+    fn test_mouse_button_variants() {
+        let buttons = [MouseButton::Left, MouseButton::Right, MouseButton::Middle];
+        for button in buttons {
+            let json = serde_json::to_string(&button).unwrap();
+            let decoded: MouseButton = serde_json::from_str(&json).unwrap();
+            assert!(matches!(
+                (&button, &decoded),
+                (MouseButton::Left, MouseButton::Left)
+                    | (MouseButton::Right, MouseButton::Right)
+                    | (MouseButton::Middle, MouseButton::Middle)
+            ));
+        }
+    }
 }
