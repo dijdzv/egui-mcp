@@ -12,17 +12,21 @@ git_release_enable = true
 git_tag_enable = true
 
 # Packages to publish (in order)
+# All packages share the same version (version_group)
 [[package]]
 name = "egui-mcp-protocol"
 publish = true
+version_group = "egui-mcp"
 
 [[package]]
 name = "egui-mcp-client"
 publish = true
+version_group = "egui-mcp"
 
 [[package]]
 name = "egui-mcp-server"
 publish = true
+version_group = "egui-mcp"
 
 # Demo app is completely excluded from release process
 [[package]]
