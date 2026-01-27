@@ -30,14 +30,15 @@ use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberI
 #[derive(Parser)]
 #[command(name = "egui-mcp-server")]
 #[command(version, about, long_about = None)]
+#[command(subcommand_required = true, arg_required_else_help = true)]
 struct Cli {
     #[command(subcommand)]
-    command: Option<Commands>,
+    command: Commands,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Run as MCP server (default behavior)
+    /// Run as MCP server
     Serve,
     /// Show setup guide for MCP client and egui app integration
     Guide,
@@ -3556,7 +3557,7 @@ Screenshots:
   - compare_screenshots  Compare two screenshots for similarity
   - diff_screenshots     Generate visual diff between screenshots
 
-For more information, visit: https://github.com/anthropics/egui-mcp
+For more information, visit: https://github.com/dijdzv/egui-mcp
 
 ================================================================================
 "#
@@ -3608,10 +3609,10 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Guide) => {
+        Commands::Guide => {
             print_guide();
             Ok(())
         }
-        Some(Commands::Serve) | None => run_server().await,
+        Commands::Serve => run_server().await,
     }
 }
