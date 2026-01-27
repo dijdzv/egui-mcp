@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.4](https://github.com/dijdzv/egui-mcp/compare/0.0.3...0.0.4) - 2026-01-27
+
+### Refactored
+
+- Migrate atspi from async-std to tokio ([#24](https://github.com/dijdzv/egui-mcp/pull/24))
+
+### Testing
+
+- Expand test coverage with contract-based tests ([#26](https://github.com/dijdzv/egui-mcp/pull/26))
+
+
+
 ## [0.0.3](https://github.com/dijdzv/egui-mcp/compare/egui-mcp-protocol-v0.0.2...egui-mcp-protocol-v0.0.3) - 2026-01-26
 
 ### Fixed

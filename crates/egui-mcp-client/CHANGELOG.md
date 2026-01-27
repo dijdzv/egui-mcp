@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.4](https://github.com/dijdzv/egui-mcp/compare/0.0.3...0.0.4) - 2026-01-27
+
+### Added
+
+- Add message size limit to log buffer ([#29](https://github.com/dijdzv/egui-mcp/pull/29))
+- Expand parse_special_key to cover all egui::Key variants ([#31](https://github.com/dijdzv/egui-mcp/pull/31))
+
+### Refactored
+
+- Use oneshot channel for event-driven screenshots ([#27](https://github.com/dijdzv/egui-mcp/pull/27))
+
+
+
 ## [0.0.3](https://github.com/dijdzv/egui-mcp/compare/egui-mcp-client-v0.0.2...egui-mcp-client-v0.0.3) - 2026-01-26
 
 ### Fixed
