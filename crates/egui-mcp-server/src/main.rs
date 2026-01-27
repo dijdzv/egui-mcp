@@ -544,7 +544,17 @@ impl EguiMcpServer {
     async fn get_ui_tree(&self) -> String {
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::get_ui_tree_blocking(&self.app_name) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.get_ui_tree_by_app_name(&self.app_name).await {
                 Ok(Some(tree)) => {
                     return serde_json::to_string_pretty(&tree).unwrap_or_else(|e| {
                         json!({
@@ -578,7 +588,17 @@ impl EguiMcpServer {
     ) -> String {
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::find_by_label_blocking(&self.app_name, &pattern, false) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.find_by_label(&self.app_name, &pattern, false).await {
                 Ok(elements) => {
                     return serde_json::to_string_pretty(&json!({
                         "count": elements.len(),
@@ -598,7 +618,7 @@ impl EguiMcpServer {
             }
         }
 
-        let _ = pattern; // suppress unused warning on non-Linux
+        let _ = pattern;
         json!({
             "error": "not_available",
             "message": "Element search requires AT-SPI on Linux."
@@ -614,7 +634,17 @@ impl EguiMcpServer {
     ) -> String {
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::find_by_label_blocking(&self.app_name, &pattern, true) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.find_by_label(&self.app_name, &pattern, true).await {
                 Ok(elements) => {
                     return serde_json::to_string_pretty(&json!({
                         "count": elements.len(),
@@ -652,7 +682,17 @@ impl EguiMcpServer {
     ) -> String {
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::find_by_role_blocking(&self.app_name, &role) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.find_by_role(&self.app_name, &role).await {
                 Ok(elements) => {
                     return serde_json::to_string_pretty(&json!({
                         "count": elements.len(),
@@ -701,7 +741,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::get_element_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.get_element(&self.app_name, id).await {
                 Ok(Some(element)) => {
                     return serde_json::to_string_pretty(&element).unwrap_or_else(|e| {
                         json!({
@@ -753,7 +803,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::click_element_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.click_element(&self.app_name, id).await {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Clicked element with id {}", id)
@@ -804,7 +864,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::set_text_blocking(&self.app_name, id, &text) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.set_text(&self.app_name, id, &text).await {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Set text on element with id {}", id)
@@ -1127,7 +1197,17 @@ impl EguiMcpServer {
         #[cfg(target_os = "linux")]
         {
             // First, get the element bounds
-            match atspi_client::get_bounds_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.get_bounds(&self.app_name, id).await {
                 Ok(Some(bounds)) => {
                     // Calculate center of the element
                     let start_x = bounds.x + bounds.width / 2.0;
@@ -1220,7 +1300,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::get_bounds_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.get_bounds(&self.app_name, id).await {
                 Ok(Some(bounds)) => json!({
                     "x": bounds.x,
                     "y": bounds.y,
@@ -1273,7 +1363,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::focus_element_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.focus_element(&self.app_name, id).await {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Focused element with id {}", id)
@@ -1322,7 +1422,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::scroll_to_element_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.scroll_to_element(&self.app_name, id).await {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Scrolled element {} into view", id)
@@ -1377,7 +1487,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::get_value_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.get_value(&self.app_name, id).await {
                 Ok(Some(value_info)) => {
                     serde_json::to_string_pretty(&value_info).unwrap_or_else(|e| {
                         json!({
@@ -1432,7 +1552,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::set_value_blocking(&self.app_name, id, value) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.set_value(&self.app_name, id, value).await {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Set value to {} on element {}", value, id)
@@ -1487,7 +1617,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::select_item_blocking(&self.app_name, id, index) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.select_item(&self.app_name, id, index).await {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Selected item at index {} in element {}", index, id)
@@ -1538,7 +1678,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::deselect_item_blocking(&self.app_name, id, index) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.deselect_item(&self.app_name, id, index).await {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Deselected item at index {} in element {}", index, id)
@@ -1589,7 +1739,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::get_selected_count_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.get_selected_count(&self.app_name, id).await {
                 Ok(count) => json!({
                     "count": count,
                     "message": format!("Element {} has {} selected items", id, count)
@@ -1635,7 +1795,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::select_all_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.select_all(&self.app_name, id).await {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Selected all items in element {}", id)
@@ -1686,7 +1856,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::clear_selection_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.clear_selection(&self.app_name, id).await {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Cleared all selections in element {}", id)
@@ -1741,7 +1921,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::get_text_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.get_text(&self.app_name, id).await {
                 Ok(Some(text_info)) => {
                     serde_json::to_string_pretty(&text_info).unwrap_or_else(|e| {
                         json!({
@@ -1796,7 +1986,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::get_text_selection_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.get_text_selection(&self.app_name, id).await {
                 Ok(Some(selection)) => {
                     serde_json::to_string_pretty(&selection).unwrap_or_else(|e| {
                         json!({
@@ -1851,7 +2051,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::set_text_selection_blocking(&self.app_name, id, start, end) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.set_text_selection(&self.app_name, id, start, end).await {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Set text selection from {} to {} on element {}", start, end, id)
@@ -1902,7 +2112,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::get_caret_position_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.get_caret_position(&self.app_name, id).await {
                 Ok(offset) => json!({
                     "offset": offset,
                     "message": format!("Caret at position {} in element {}", offset, id)
@@ -1948,7 +2168,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::set_caret_position_blocking(&self.app_name, id, offset) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.set_caret_position(&self.app_name, id, offset).await {
                 Ok(true) => json!({
                     "success": true,
                     "message": format!("Set caret to position {} in element {}", offset, id)
@@ -2001,7 +2231,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::is_visible_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.is_visible(&self.app_name, id).await {
                 Ok(visible) => json!({
                     "id": id,
                     "visible": visible
@@ -2045,7 +2285,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::is_enabled_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.is_enabled(&self.app_name, id).await {
                 Ok(enabled) => json!({
                     "id": id,
                     "enabled": enabled
@@ -2089,7 +2339,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::is_focused_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.is_focused(&self.app_name, id).await {
                 Ok(focused) => json!({
                     "id": id,
                     "focused": focused
@@ -2135,7 +2395,17 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
-            match atspi_client::is_checked_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.is_checked(&self.app_name, id).await {
                 Ok(checked) => json!({
                     "id": id,
                     "checked": checked,
@@ -2191,7 +2461,19 @@ impl EguiMcpServer {
         #[cfg(target_os = "linux")]
         {
             // First get element bounds
-            let bounds = match atspi_client::get_bounds_blocking(&self.app_name, id) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return Content::text(
+                        json!({
+                            "error": "atspi_connection_error",
+                            "message": format!("Failed to connect to AT-SPI: {}", e)
+                        })
+                        .to_string(),
+                    );
+                }
+            };
+            let bounds = match client.get_bounds(&self.app_name, id).await {
                 Ok(Some(b)) => b,
                 Ok(None) => {
                     return Content::text(json!({
@@ -2325,8 +2607,18 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
             loop {
-                let results = atspi_client::find_by_label_blocking(&self.app_name, &pattern, false);
+                let results = client.find_by_label(&self.app_name, &pattern, false).await;
                 let found = results.map(|r| !r.is_empty()).unwrap_or(false);
 
                 if found == appear {
@@ -2393,14 +2685,22 @@ impl EguiMcpServer {
 
         #[cfg(target_os = "linux")]
         {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
             loop {
                 let current_state = match state.to_lowercase().as_str() {
-                    "visible" => atspi_client::is_visible_blocking(&self.app_name, id).ok(),
-                    "enabled" => atspi_client::is_enabled_blocking(&self.app_name, id).ok(),
-                    "focused" => atspi_client::is_focused_blocking(&self.app_name, id).ok(),
-                    "checked" => atspi_client::is_checked_blocking(&self.app_name, id)
-                        .ok()
-                        .flatten(),
+                    "visible" => client.is_visible(&self.app_name, id).await.ok(),
+                    "enabled" => client.is_enabled(&self.app_name, id).await.ok(),
+                    "focused" => client.is_focused(&self.app_name, id).await.ok(),
+                    "checked" => client.is_checked(&self.app_name, id).await.ok().flatten(),
                     _ => {
                         return json!({
                             "error": "invalid_state",
@@ -2777,7 +3077,17 @@ impl EguiMcpServer {
         #[cfg(target_os = "linux")]
         {
             // Get element bounds via AT-SPI
-            let bounds = atspi_client::get_bounds_blocking(&self.app_name, id);
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            let bounds = client.get_bounds(&self.app_name, id).await;
             match bounds {
                 Ok(Some(rect)) => {
                     // Send highlight request via IPC
@@ -2858,7 +3168,17 @@ impl EguiMcpServer {
         #[cfg(target_os = "linux")]
         {
             // Get current UI tree
-            match atspi_client::get_ui_tree_blocking(&self.app_name) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.get_ui_tree_by_app_name(&self.app_name).await {
                 Ok(Some(tree)) => {
                     // Serialize to JSON
                     let json = serde_json::to_string(&tree).unwrap_or_default();
@@ -3044,7 +3364,17 @@ impl EguiMcpServer {
             };
 
             // Get current tree
-            match atspi_client::get_ui_tree_blocking(&self.app_name) {
+            let client = match atspi_client::AtspiClient::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    return json!({
+                        "error": "atspi_connection_error",
+                        "message": format!("Failed to connect to AT-SPI: {}", e)
+                    })
+                    .to_string();
+                }
+            };
+            match client.get_ui_tree_by_app_name(&self.app_name).await {
                 Ok(Some(current_tree)) => {
                     let diff = compute_tree_diff(&saved_tree, &current_tree);
                     json!({
@@ -3577,7 +3907,7 @@ async fn run_server() -> Result<()> {
     // This tells accessible applications (like egui with AccessKit) that an AT client is present
     #[cfg(target_os = "linux")]
     {
-        match atspi_connection::set_session_accessibility(true).await {
+        match atspi::connection::set_session_accessibility(true).await {
             Ok(()) => tracing::info!("Session accessibility enabled"),
             Err(e) => tracing::warn!("Failed to enable session accessibility: {}", e),
         }
