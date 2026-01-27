@@ -23,7 +23,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, oneshot};
 
 pub use egui_mcp_protocol::{FrameStats, LogEntry, MouseButton, PerfReport, Request, Response};
 
@@ -83,10 +83,8 @@ pub struct McpClient {
 
 struct ClientState {
     socket_path: PathBuf,
-    /// Screenshot data (PNG encoded)
-    screenshot_data: Option<Vec<u8>>,
-    /// Flag to request a screenshot
-    screenshot_requested: bool,
+    /// Pending screenshot request sender (event-driven)
+    screenshot_sender: Option<oneshot::Sender<Vec<u8>>>,
     /// Pending input events to be processed by the egui app
     pending_inputs: Vec<PendingInput>,
     /// Active highlights to be drawn
@@ -124,8 +122,7 @@ impl McpClient {
         Self {
             state: Arc::new(RwLock::new(ClientState {
                 socket_path,
-                screenshot_data: None,
-                screenshot_requested: false,
+                screenshot_sender: None,
                 pending_inputs: Vec::new(),
                 highlights: Vec::new(),
                 log_buffer: None,
@@ -157,34 +154,30 @@ impl McpClient {
         self.state.read().await.socket_path.clone()
     }
 
-    // Screenshot methods
+    // Screenshot methods (event-driven)
 
-    /// Set screenshot data (PNG encoded)
-    pub async fn set_screenshot(&self, data: Vec<u8>) {
-        self.state.write().await.screenshot_data = Some(data);
+    /// Request a screenshot and return a receiver to await the result.
+    /// This is more efficient than polling as it uses a oneshot channel.
+    pub async fn request_screenshot(&self) -> oneshot::Receiver<Vec<u8>> {
+        let (tx, rx) = oneshot::channel();
+        self.state.write().await.screenshot_sender = Some(tx);
+        rx
     }
 
-    /// Get screenshot data (PNG encoded)
-    pub async fn get_screenshot(&self) -> Option<Vec<u8>> {
-        self.state.read().await.screenshot_data.clone()
-    }
-
-    /// Clear screenshot data
-    pub async fn clear_screenshot(&self) {
-        self.state.write().await.screenshot_data = None;
-    }
-
-    /// Request a screenshot (sets flag for the UI to capture)
-    pub async fn request_screenshot(&self) {
-        self.state.write().await.screenshot_requested = true;
-    }
-
-    /// Check if screenshot is requested and clear the flag
+    /// Check if screenshot is requested and return the sender if available.
+    /// Called by the UI to check if it should capture a screenshot.
     pub async fn take_screenshot_request(&self) -> bool {
-        let mut state = self.state.write().await;
-        let requested = state.screenshot_requested;
-        state.screenshot_requested = false;
-        requested
+        self.state.read().await.screenshot_sender.is_some()
+    }
+
+    /// Set screenshot data (PNG encoded) - sends through the oneshot channel.
+    /// Called by the UI after capturing a screenshot.
+    pub async fn set_screenshot(&self, data: Vec<u8>) {
+        let sender = self.state.write().await.screenshot_sender.take();
+        if let Some(tx) = sender {
+            // Ignore error if receiver was dropped (e.g., timeout)
+            let _ = tx.send(data);
+        }
     }
 
     // Input methods
