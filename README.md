@@ -177,17 +177,14 @@ fn main() {
 
 ### 2. Configure MCP Client
 
-Add the server to your MCP client's configuration. The format depends on your MCP client:
+Run `egui-mcp-server guide` for detailed setup instructions including:
+- MCP client configuration (`.mcp.json`)
+- Required environment variables
+- Available MCP tools
 
-```json
-{
-  "mcpServers": {
-    "egui-mcp": {
-      "command": "/path/to/egui-mcp-server",
-      "args": []
-    }
-  }
-}
+```bash
+# Show setup guide
+egui-mcp-server guide
 ```
 
 ### 3. Available Tools
