@@ -1,143 +1,16 @@
 //! AT-SPI client for accessing accessibility information on Linux
+//!
+//! This module provides async functions to interact with accessible applications
+//! via the AT-SPI (Assistive Technology Service Provider Interface) protocol.
 
-use atspi_common::{CoordType, ObjectRef, ScrollType, State, StateSet};
-use atspi_connection::AccessibilityConnection;
-use atspi_proxies::accessible::{AccessibleProxy, ObjectRefExt};
+use atspi::connection::AccessibilityConnection;
+use atspi::proxy::accessible::{AccessibleProxy, ObjectRefExt};
+use atspi::{CoordType, ObjectRefOwned, ScrollType, State, StateSet};
 use egui_mcp_protocol::{NodeInfo, Rect, UiTree};
-use std::thread;
 
-type BoxError = Box<dyn std::error::Error + Send + Sync>;
+pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
-/// Get UI tree for a specific application using AT-SPI
-/// This function runs in a separate thread with async-std runtime
-pub fn get_ui_tree_blocking(app_name: &str) -> Result<Option<UiTree>, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.get_ui_tree_by_app_name(&app_name).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Find UI elements by label using AT-SPI
-pub fn find_by_label_blocking(
-    app_name: &str,
-    pattern: &str,
-    exact: bool,
-) -> Result<Vec<NodeInfo>, BoxError> {
-    let app_name = app_name.to_string();
-    let pattern = pattern.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.find_by_label(&app_name, &pattern, exact).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Find UI elements by role using AT-SPI
-pub fn find_by_role_blocking(app_name: &str, role: &str) -> Result<Vec<NodeInfo>, BoxError> {
-    let app_name = app_name.to_string();
-    let role = role.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.find_by_role(&app_name, &role).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Get a specific element by ID using AT-SPI
-pub fn get_element_blocking(app_name: &str, id: u64) -> Result<Option<NodeInfo>, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            let tree = client.get_ui_tree_by_app_name(&app_name).await?;
-            if let Some(tree) = tree {
-                Ok(tree.nodes.into_iter().find(|n| n.id == id))
-            } else {
-                Ok(None)
-            }
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Click an element by ID using AT-SPI Action interface
-pub fn click_element_blocking(app_name: &str, id: u64) -> Result<bool, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.click_element(&app_name, id).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Set text content of an element by ID using AT-SPI EditableText interface
-pub fn set_text_blocking(app_name: &str, id: u64, text: &str) -> Result<bool, BoxError> {
-    let app_name = app_name.to_string();
-    let text = text.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.set_text(&app_name, id, &text).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-// ============================================================================
-// Priority 2: Element Information (AT-SPI Component)
-// ============================================================================
-
-/// Get element bounds (bounding box) using AT-SPI Component interface
-pub fn get_bounds_blocking(app_name: &str, id: u64) -> Result<Option<Rect>, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.get_bounds(&app_name, id).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Focus an element by ID using AT-SPI Component interface
-pub fn focus_element_blocking(app_name: &str, id: u64) -> Result<bool, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.focus_element(&app_name, id).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Scroll element into view using AT-SPI Component interface
-pub fn scroll_to_element_blocking(app_name: &str, id: u64) -> Result<bool, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.scroll_to_element(&app_name, id).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-// ============================================================================
-// Priority 3: Value Operations (AT-SPI Value)
-// ============================================================================
-
-/// Value information returned from AT-SPI
+/// Value information returned from AT-SPI Value interface
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ValueInfo {
     pub current: f64,
@@ -146,99 +19,7 @@ pub struct ValueInfo {
     pub increment: f64,
 }
 
-/// Get value of an element using AT-SPI Value interface
-pub fn get_value_blocking(app_name: &str, id: u64) -> Result<Option<ValueInfo>, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.get_value(&app_name, id).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Set value of an element using AT-SPI Value interface
-pub fn set_value_blocking(app_name: &str, id: u64, value: f64) -> Result<bool, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.set_value(&app_name, id, value).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-// ============================================================================
-// Priority 4: Selection Operations (AT-SPI Selection)
-// ============================================================================
-
-/// Select an item by index using AT-SPI Selection interface
-pub fn select_item_blocking(app_name: &str, id: u64, index: i32) -> Result<bool, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.select_item(&app_name, id, index).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Deselect an item by index using AT-SPI Selection interface
-pub fn deselect_item_blocking(app_name: &str, id: u64, index: i32) -> Result<bool, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.deselect_item(&app_name, id, index).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Get count of selected items using AT-SPI Selection interface
-pub fn get_selected_count_blocking(app_name: &str, id: u64) -> Result<i32, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.get_selected_count(&app_name, id).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Select all items using AT-SPI Selection interface
-pub fn select_all_blocking(app_name: &str, id: u64) -> Result<bool, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.select_all(&app_name, id).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Clear all selections using AT-SPI Selection interface
-pub fn clear_selection_blocking(app_name: &str, id: u64) -> Result<bool, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.clear_selection(&app_name, id).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-// ============================================================================
-// Priority 5: Text Operations (AT-SPI Text)
-// ============================================================================
-
-/// Text information returned from AT-SPI
+/// Text information returned from AT-SPI Text interface
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TextInfo {
     pub text: String,
@@ -246,136 +27,11 @@ pub struct TextInfo {
     pub caret_offset: i32,
 }
 
-/// Text selection information
+/// Text selection range
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TextSelection {
     pub start: i32,
     pub end: i32,
-}
-
-/// Get text content using AT-SPI Text interface
-pub fn get_text_blocking(app_name: &str, id: u64) -> Result<Option<TextInfo>, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.get_text(&app_name, id).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Get text selection range using AT-SPI Text interface
-pub fn get_text_selection_blocking(
-    app_name: &str,
-    id: u64,
-) -> Result<Option<TextSelection>, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.get_text_selection(&app_name, id).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Set text selection range using AT-SPI Text interface
-pub fn set_text_selection_blocking(
-    app_name: &str,
-    id: u64,
-    start: i32,
-    end: i32,
-) -> Result<bool, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.set_text_selection(&app_name, id, start, end).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Get caret (cursor) position using AT-SPI Text interface
-pub fn get_caret_position_blocking(app_name: &str, id: u64) -> Result<i32, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.get_caret_position(&app_name, id).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Set caret (cursor) position using AT-SPI Text interface
-pub fn set_caret_position_blocking(app_name: &str, id: u64, offset: i32) -> Result<bool, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.set_caret_position(&app_name, id, offset).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-// ============================================================================
-// Priority 6: State Queries (AT-SPI State)
-// ============================================================================
-
-/// Check if element is visible using AT-SPI State interface
-pub fn is_visible_blocking(app_name: &str, id: u64) -> Result<bool, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.is_visible(&app_name, id).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Check if element is enabled using AT-SPI State interface
-pub fn is_enabled_blocking(app_name: &str, id: u64) -> Result<bool, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.is_enabled(&app_name, id).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Check if element is focused using AT-SPI State interface
-pub fn is_focused_blocking(app_name: &str, id: u64) -> Result<bool, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.is_focused(&app_name, id).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// Check if element is checked/pressed using AT-SPI State interface
-pub fn is_checked_blocking(app_name: &str, id: u64) -> Result<Option<bool>, BoxError> {
-    let app_name = app_name.to_string();
-    let handle = thread::spawn(move || {
-        async_std::task::block_on(async {
-            let client = AtspiClient::new().await?;
-            client.is_checked(&app_name, id).await
-        })
-    });
-    handle.join().unwrap()
-}
-
-/// AT-SPI client for communicating with accessible applications
-pub struct AtspiClient {
-    connection: AccessibilityConnection,
 }
 
 /// Extract the actual AT-SPI node ID from an ObjectRef path
@@ -383,6 +39,11 @@ pub struct AtspiClient {
 /// We want to extract "4467407273966801439" as a u64
 fn extract_atspi_node_id(path: &str) -> Option<u64> {
     path.rsplit('/').next().and_then(|s| s.parse().ok())
+}
+
+/// AT-SPI client for communicating with accessible applications
+pub struct AtspiClient {
+    connection: AccessibilityConnection,
 }
 
 impl AtspiClient {
@@ -408,7 +69,10 @@ impl AtspiClient {
     }
 
     /// Find an application ObjectRef by name
-    async fn find_app_ref_by_name(&self, app_name: &str) -> Result<Option<ObjectRef>, BoxError> {
+    async fn find_app_ref_by_name(
+        &self,
+        app_name: &str,
+    ) -> Result<Option<ObjectRefOwned>, BoxError> {
         let registry_proxy: AccessibleProxy<'_> =
             AccessibleProxy::builder(self.connection.connection())
                 .destination("org.a11y.atspi.Registry")?
@@ -416,7 +80,7 @@ impl AtspiClient {
                 .build()
                 .await?;
 
-        let apps: Vec<ObjectRef> = registry_proxy.get_children().await?;
+        let apps: Vec<ObjectRefOwned> = registry_proxy.get_children().await?;
 
         for app_ref in apps {
             let app_proxy: AccessibleProxy<'_> = app_ref
@@ -450,7 +114,7 @@ impl AtspiClient {
             .await?;
 
         // Get the root's children (typically the window)
-        let children: Vec<ObjectRef> = app_proxy.get_children().await?;
+        let children: Vec<ObjectRefOwned> = app_proxy.get_children().await?;
 
         for child_ref in children.iter() {
             if let Some(path) =
@@ -466,21 +130,22 @@ impl AtspiClient {
     /// Recursively search for element path by actual AT-SPI node ID
     async fn find_path_in_tree_by_atspi_id(
         &self,
-        obj_ref: &ObjectRef,
+        obj_ref: &ObjectRefOwned,
         target_id: u64,
     ) -> Result<Option<(String, String)>, BoxError> {
         // Check if this node's path ends with the target ID
-        let path_str = obj_ref.path.to_string();
-        if extract_atspi_node_id(&path_str) == Some(target_id) {
-            return Ok(Some((obj_ref.name.to_string(), path_str)));
+        let path_str = obj_ref.path_as_str();
+        if extract_atspi_node_id(path_str) == Some(target_id) {
+            let name = obj_ref.name_as_str().unwrap_or_default();
+            return Ok(Some((name.to_string(), path_str.to_string())));
         }
 
-        let proxy = obj_ref
+        let proxy: AccessibleProxy<'_> = obj_ref
             .as_accessible_proxy(self.connection.connection())
             .await?;
 
         // Get children and search recursively
-        let children_refs: Vec<ObjectRef> = proxy.get_children().await.unwrap_or_default();
+        let children_refs = proxy.get_children().await.unwrap_or_default();
 
         for child_ref in children_refs.iter() {
             if let Some(found) =
@@ -500,8 +165,7 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        // Build ActionProxy directly (Proxies::action() has issues with interface conversion)
-        use atspi_proxies::action::ActionProxy;
+        use atspi::proxy::action::ActionProxy;
         let action_proxy = ActionProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
@@ -520,8 +184,7 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        // Build EditableTextProxy directly
-        use atspi_proxies::editable_text::EditableTextProxy;
+        use atspi::proxy::editable_text::EditableTextProxy;
         let editable_text_proxy = EditableTextProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
@@ -541,7 +204,7 @@ impl AtspiClient {
         let mut roots: Vec<u64> = Vec::new();
 
         // Get the root's children (typically the window)
-        let children: Vec<ObjectRef> = root_proxy.get_children().await?;
+        let children: Vec<ObjectRefOwned> = root_proxy.get_children().await?;
 
         for child_ref in children.iter() {
             let window_proxy: AccessibleProxy<'_> = child_ref
@@ -549,15 +212,12 @@ impl AtspiClient {
                 .await?;
 
             // Use the actual AT-SPI node ID from the object path
-            let window_id = extract_atspi_node_id(&child_ref.path.to_string()).unwrap_or(1);
+            let child_path = child_ref.path_as_str();
+            let window_id = extract_atspi_node_id(child_path).unwrap_or(1);
             roots.push(window_id);
 
-            self.traverse_tree_with_atspi_ids(
-                &window_proxy,
-                &child_ref.path.to_string(),
-                &mut nodes,
-            )
-            .await?;
+            self.traverse_tree_with_atspi_ids(&window_proxy, child_path, &mut nodes)
+                .await?;
         }
 
         if nodes.is_empty() {
@@ -589,13 +249,11 @@ impl AtspiClient {
         let state_set = proxy.get_state().await.ok();
         let (focused, disabled, toggled) = if let Some(state) = state_set {
             (
-                state.contains(atspi_common::State::Focused),
-                !state.contains(atspi_common::State::Enabled),
-                if state.contains(atspi_common::State::Checked)
-                    || state.contains(atspi_common::State::Pressed)
-                {
+                state.contains(State::Focused),
+                !state.contains(State::Enabled),
+                if state.contains(State::Checked) || state.contains(State::Pressed) {
                     Some(true)
-                } else if state.contains(atspi_common::State::Checkable) {
+                } else if state.contains(State::Checkable) {
                     Some(false)
                 } else {
                     None
@@ -606,13 +264,13 @@ impl AtspiClient {
         };
 
         // Get children
-        let children_refs: Vec<ObjectRef> = proxy.get_children().await.unwrap_or_default();
+        let children_refs: Vec<ObjectRefOwned> = proxy.get_children().await.unwrap_or_default();
         let mut child_ids: Vec<u64> = Vec::new();
 
         // Process children using their actual AT-SPI IDs
         for child_ref in children_refs.iter() {
-            let child_path = child_ref.path.to_string();
-            let child_id = extract_atspi_node_id(&child_path).unwrap_or(0);
+            let child_path = child_ref.path_as_str();
+            let child_id = extract_atspi_node_id(child_path).unwrap_or(0);
             child_ids.push(child_id);
 
             let child_proxy: AccessibleProxy<'_> = child_ref
@@ -620,7 +278,7 @@ impl AtspiClient {
                 .await?;
 
             // Recursive traversal
-            Box::pin(self.traverse_tree_with_atspi_ids(&child_proxy, &child_path, nodes)).await?;
+            Box::pin(self.traverse_tree_with_atspi_ids(&child_proxy, child_path, nodes)).await?;
         }
 
         // Determine label based on role and name
@@ -636,9 +294,9 @@ impl AtspiClient {
             id: node_id,
             role,
             label,
-            value: None, // AT-SPI can provide value through Value interface
+            value: None,
             children: child_ids,
-            bounds: None, // AT-SPI can provide bounds through Component interface
+            bounds: None,
             toggled,
             disabled,
             focused,
@@ -701,8 +359,18 @@ impl AtspiClient {
         Ok(results)
     }
 
+    /// Get a specific element by ID
+    pub async fn get_element(&self, app_name: &str, id: u64) -> Result<Option<NodeInfo>, BoxError> {
+        let tree = self.get_ui_tree_by_app_name(app_name).await?;
+        if let Some(tree) = tree {
+            Ok(tree.nodes.into_iter().find(|n| n.id == id))
+        } else {
+            Ok(None)
+        }
+    }
+
     // ========================================================================
-    // Priority 2: Element Information (AT-SPI Component)
+    // Element Information (AT-SPI Component)
     // ========================================================================
 
     /// Get element bounds using AT-SPI Component interface
@@ -712,8 +380,7 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        // Build ComponentProxy directly
-        use atspi_proxies::component::ComponentProxy;
+        use atspi::proxy::component::ComponentProxy;
         let component_proxy = ComponentProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
@@ -737,8 +404,7 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        // Build ComponentProxy directly
-        use atspi_proxies::component::ComponentProxy;
+        use atspi::proxy::component::ComponentProxy;
         let component_proxy = ComponentProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
@@ -756,8 +422,7 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        // Build ComponentProxy directly
-        use atspi_proxies::component::ComponentProxy;
+        use atspi::proxy::component::ComponentProxy;
         let component_proxy = ComponentProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
@@ -769,8 +434,45 @@ impl AtspiClient {
         Ok(result)
     }
 
+    /// Drag element using AT-SPI Component interface
+    /// Note: Currently unused as dragging is handled via IPC, but kept for potential future use
+    #[allow(dead_code)]
+    pub async fn drag_element(
+        &self,
+        app_name: &str,
+        id: u64,
+        delta_x: i32,
+        delta_y: i32,
+    ) -> Result<bool, BoxError> {
+        let path_info = self.find_element_path_by_id(app_name, id).await?;
+        let Some((destination, path)) = path_info else {
+            return Err(format!("Element with id {} not found", id).into());
+        };
+
+        use atspi::proxy::component::ComponentProxy;
+        let component_proxy = ComponentProxy::builder(self.connection.connection())
+            .destination(destination.as_str())?
+            .path(path.as_str())?
+            .build()
+            .await?;
+
+        // Get current position
+        let (x, y, _width, _height) = component_proxy.get_extents(CoordType::Window).await?;
+
+        // Calculate target position
+        let target_x = x + delta_x;
+        let target_y = y + delta_y;
+
+        // AT-SPI doesn't have a direct drag method, but we can use scroll_to_point
+        // to move the element to a new position (if supported by the application)
+        let result = component_proxy
+            .scroll_to_point(CoordType::Window, target_x, target_y)
+            .await?;
+        Ok(result)
+    }
+
     // ========================================================================
-    // Priority 3: Value Operations (AT-SPI Value)
+    // Value Operations (AT-SPI Value)
     // ========================================================================
 
     /// Get value information using AT-SPI Value interface
@@ -780,8 +482,7 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        // Build ValueProxy directly (Proxies::value() has issues with interface conversion)
-        use atspi_proxies::value::ValueProxy;
+        use atspi::proxy::value::ValueProxy;
         let value_proxy = ValueProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
@@ -808,8 +509,7 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        // Build ValueProxy directly (Proxies::value() has issues with interface conversion)
-        use atspi_proxies::value::ValueProxy;
+        use atspi::proxy::value::ValueProxy;
         let value_proxy = ValueProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
@@ -821,7 +521,7 @@ impl AtspiClient {
     }
 
     // ========================================================================
-    // Priority 4: Selection Operations (AT-SPI Selection)
+    // Selection Operations (AT-SPI Selection)
     // ========================================================================
 
     /// Select an item by index using AT-SPI Selection interface
@@ -831,8 +531,7 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        // Build SelectionProxy directly (Proxies::selection() has issues with interface conversion)
-        use atspi_proxies::selection::SelectionProxy;
+        use atspi::proxy::selection::SelectionProxy;
         let selection_proxy = SelectionProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
@@ -855,8 +554,7 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        // Build SelectionProxy directly (Proxies::selection() has issues with interface conversion)
-        use atspi_proxies::selection::SelectionProxy;
+        use atspi::proxy::selection::SelectionProxy;
         let selection_proxy = SelectionProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
@@ -868,9 +566,6 @@ impl AtspiClient {
     }
 
     /// Get count of selected items using AT-SPI Selection interface
-    ///
-    /// For ComboBox, this checks if there's a selected value (name property).
-    /// For other containers, it uses the Selection interface's nselected_children().
     pub async fn get_selected_count(&self, app_name: &str, id: u64) -> Result<i32, BoxError> {
         let path_info = self.find_element_path_by_id(app_name, id).await?;
         let Some((destination, path)) = path_info else {
@@ -888,15 +583,13 @@ impl AtspiClient {
 
         // ComboBox: check if there's a selected value (stored in name property)
         if let Some(role) = role
-            && role == atspi_common::Role::ComboBox
+            && role == atspi::Role::ComboBox
         {
             let name: String = accessible_proxy.name().await.unwrap_or_default();
-            // If name is not empty, something is selected
             return Ok(if name.is_empty() { 0 } else { 1 });
         }
 
-        // For other containers, use the Selection interface
-        use atspi_proxies::selection::SelectionProxy;
+        use atspi::proxy::selection::SelectionProxy;
         let selection_proxy = SelectionProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
@@ -914,8 +607,7 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        // Build SelectionProxy directly (Proxies::selection() has issues with interface conversion)
-        use atspi_proxies::selection::SelectionProxy;
+        use atspi::proxy::selection::SelectionProxy;
         let selection_proxy = SelectionProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
@@ -933,8 +625,7 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        // Build SelectionProxy directly (Proxies::selection() has issues with interface conversion)
-        use atspi_proxies::selection::SelectionProxy;
+        use atspi::proxy::selection::SelectionProxy;
         let selection_proxy = SelectionProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
@@ -946,7 +637,7 @@ impl AtspiClient {
     }
 
     // ========================================================================
-    // Priority 5: Text Operations (AT-SPI Text)
+    // Text Operations (AT-SPI Text)
     // ========================================================================
 
     /// Get text content using AT-SPI Text interface
@@ -956,8 +647,7 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        // Build TextProxy directly (Proxies::text() has issues with interface conversion)
-        use atspi_proxies::text::TextProxy;
+        use atspi::proxy::text::TextProxy;
         let text_proxy = match TextProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
@@ -989,8 +679,7 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        // Build TextProxy directly (Proxies::text() has issues with interface conversion)
-        use atspi_proxies::text::TextProxy;
+        use atspi::proxy::text::TextProxy;
         let text_proxy = match TextProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
@@ -998,11 +687,10 @@ impl AtspiClient {
             .await
         {
             Ok(proxy) => proxy,
-            Err(_) => return Ok(None), // Text interface not available
+            Err(_) => return Ok(None),
         };
 
         // Note: atspi-proxies has a bug where it calls "GetNselections" instead of "GetNSelections"
-        // (case mismatch). We use call_method directly with the correct method name.
         let n_selections: i32 = text_proxy
             .inner()
             .call_method("GetNSelections", &())
@@ -1030,16 +718,13 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        // Build TextProxy directly (Proxies::text() has issues with interface conversion)
-        use atspi_proxies::text::TextProxy;
+        use atspi::proxy::text::TextProxy;
         let text_proxy = TextProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
             .build()
             .await?;
 
-        // Try to add a new selection or modify existing one
-        // Note: atspi-proxies has a bug where it calls "GetNselections" instead of "GetNSelections"
         let n_selections: i32 = text_proxy
             .inner()
             .call_method("GetNSelections", &())
@@ -1062,8 +747,7 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        // Build TextProxy directly (Proxies::text() has issues with interface conversion)
-        use atspi_proxies::text::TextProxy;
+        use atspi::proxy::text::TextProxy;
         let text_proxy = TextProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
@@ -1086,8 +770,7 @@ impl AtspiClient {
             return Err(format!("Element with id {} not found", id).into());
         };
 
-        // Build TextProxy directly (Proxies::text() has issues with interface conversion)
-        use atspi_proxies::text::TextProxy;
+        use atspi::proxy::text::TextProxy;
         let text_proxy = TextProxy::builder(self.connection.connection())
             .destination(destination.as_str())?
             .path(path.as_str())?
@@ -1099,7 +782,7 @@ impl AtspiClient {
     }
 
     // ========================================================================
-    // Priority 6: State Queries (AT-SPI State)
+    // State Queries (AT-SPI State)
     // ========================================================================
 
     /// Get element state set using AT-SPI
@@ -1122,7 +805,6 @@ impl AtspiClient {
     /// Check if element is visible (Visible or Showing state)
     pub async fn is_visible(&self, app_name: &str, id: u64) -> Result<bool, BoxError> {
         let state = self.get_element_state(app_name, id).await?;
-        // Check for Visible or Showing state
         Ok(state.contains(State::Visible) || state.contains(State::Showing))
     }
 
