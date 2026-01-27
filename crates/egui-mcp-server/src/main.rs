@@ -5,6 +5,7 @@
 //! - AT-SPI (Linux accessibility): UI tree, element search, clicks, text input
 //! - IPC (direct client): Screenshots, coordinate-based input, keyboard, scroll
 
+mod constants;
 mod guide;
 mod ipc_client;
 mod requests;
@@ -2174,7 +2175,7 @@ impl EguiMcpServer {
             timeout_ms,
         }): Parameters<WaitForElementRequest>,
     ) -> String {
-        let timeout = timeout_ms.unwrap_or(5000);
+        let timeout = timeout_ms.unwrap_or(constants::DEFAULT_WAIT_TIMEOUT_MS);
         let appear = appear.unwrap_or(true);
         let start = std::time::Instant::now();
 
@@ -2213,7 +2214,10 @@ impl EguiMcpServer {
                     .to_string();
                 }
 
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(
+                    constants::WAIT_POLL_INTERVAL_MS,
+                ))
+                .await;
             }
         }
 
@@ -2252,7 +2256,7 @@ impl EguiMcpServer {
             }
         };
 
-        let timeout = timeout_ms.unwrap_or(5000);
+        let timeout = timeout_ms.unwrap_or(constants::DEFAULT_WAIT_TIMEOUT_MS);
         let expected = expected.unwrap_or(true);
         let start = std::time::Instant::now();
 
@@ -2306,7 +2310,10 @@ impl EguiMcpServer {
                     .to_string();
                 }
 
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(
+                    constants::WAIT_POLL_INTERVAL_MS,
+                ))
+                .await;
             }
         }
 
@@ -2551,7 +2558,8 @@ impl EguiMcpServer {
 
                         if diff_value > 10 {
                             // Highlight differences in red with intensity based on difference
-                            let alpha = (diff_value as f32 * 0.8) as u8 + 50;
+                            let alpha = (diff_value as f32 * constants::DIFF_ALPHA_SCALE) as u8
+                                + constants::DIFF_MIN_ALPHA;
                             colored_diff.put_pixel(x, y, image::Rgba([255, 0, 0, alpha]));
                         } else {
                             // Keep similar areas semi-transparent with original image
@@ -2643,7 +2651,7 @@ impl EguiMcpServer {
 
         // Parse color from hex string
         let color = req.color.as_deref().unwrap_or("#ff0000ff");
-        let color = utils::parse_hex_color(color).unwrap_or([255, 0, 0, 200]); // Default: red with alpha
+        let color = utils::parse_hex_color(color).unwrap_or(constants::DEFAULT_HIGHLIGHT_COLOR);
 
         let duration_ms = req.duration_ms.unwrap_or(3000);
 
