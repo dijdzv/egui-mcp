@@ -158,8 +158,267 @@ mod tests {
 
     #[test]
     fn test_parse_hex_color_invalid() {
+        // 事前条件違反: 不正な長さ
         assert_eq!(parse_hex_color("#fff"), None);
         assert_eq!(parse_hex_color("#fffff"), None);
         assert_eq!(parse_hex_color(""), None);
+
+        // 事前条件違反: 不正な文字
+        assert_eq!(parse_hex_color("#gggggg"), None);
+        assert_eq!(parse_hex_color("#zzzzzz"), None);
+    }
+
+    #[test]
+    fn test_parse_hex_color_postconditions() {
+        // 事後条件: 6文字の有効な入力 → alpha は必ず 200
+        let result = parse_hex_color("#123456").unwrap();
+        assert_eq!(result[3], 200, "6-char hex should have alpha=200");
+
+        // 事後条件: 8文字の有効な入力 → alpha は入力通り
+        let result = parse_hex_color("#12345678").unwrap();
+        assert_eq!(result[3], 0x78, "8-char hex should preserve alpha");
+
+        // 事後条件: 出力値は入力のパース結果と一致
+        let result = parse_hex_color("#aabbcc").unwrap();
+        assert_eq!(result[0], 0xaa);
+        assert_eq!(result[1], 0xbb);
+        assert_eq!(result[2], 0xcc);
+    }
+
+    #[test]
+    fn test_compute_tree_diff_empty_trees() {
+        let tree_a = egui_mcp_protocol::UiTree::default();
+        let tree_b = egui_mcp_protocol::UiTree::default();
+        let diff = compute_tree_diff(&tree_a, &tree_b);
+
+        assert_eq!(diff["added_count"], 0);
+        assert_eq!(diff["removed_count"], 0);
+        assert_eq!(diff["modified_count"], 0);
+    }
+
+    #[test]
+    fn test_compute_tree_diff_added_nodes() {
+        let tree_a = egui_mcp_protocol::UiTree::default();
+        let tree_b = egui_mcp_protocol::UiTree {
+            roots: vec![1],
+            nodes: vec![egui_mcp_protocol::NodeInfo {
+                id: 1,
+                role: "Button".to_string(),
+                label: Some("Click me".to_string()),
+                value: None,
+                bounds: None,
+                children: vec![],
+                toggled: None,
+                disabled: false,
+                focused: false,
+            }],
+        };
+        let diff = compute_tree_diff(&tree_a, &tree_b);
+
+        assert_eq!(diff["added_count"], 1);
+        assert_eq!(diff["removed_count"], 0);
+        assert_eq!(diff["modified_count"], 0);
+        assert_eq!(diff["added"][0]["id"], 1);
+        assert_eq!(diff["added"][0]["role"], "Button");
+    }
+
+    #[test]
+    fn test_compute_tree_diff_removed_nodes() {
+        let tree_a = egui_mcp_protocol::UiTree {
+            roots: vec![1],
+            nodes: vec![egui_mcp_protocol::NodeInfo {
+                id: 1,
+                role: "Label".to_string(),
+                label: Some("Hello".to_string()),
+                value: None,
+                bounds: None,
+                children: vec![],
+                toggled: None,
+                disabled: false,
+                focused: false,
+            }],
+        };
+        let tree_b = egui_mcp_protocol::UiTree::default();
+        let diff = compute_tree_diff(&tree_a, &tree_b);
+
+        assert_eq!(diff["added_count"], 0);
+        assert_eq!(diff["removed_count"], 1);
+        assert_eq!(diff["modified_count"], 0);
+        assert_eq!(diff["removed"][0]["id"], 1);
+    }
+
+    #[test]
+    fn test_compute_tree_diff_modified_nodes() {
+        let tree_a = egui_mcp_protocol::UiTree {
+            roots: vec![1],
+            nodes: vec![egui_mcp_protocol::NodeInfo {
+                id: 1,
+                role: "TextInput".to_string(),
+                label: Some("Name".to_string()),
+                value: Some("old".to_string()),
+                bounds: None,
+                children: vec![],
+                toggled: None,
+                disabled: false,
+                focused: false,
+            }],
+        };
+        let tree_b = egui_mcp_protocol::UiTree {
+            roots: vec![1],
+            nodes: vec![egui_mcp_protocol::NodeInfo {
+                id: 1,
+                role: "TextInput".to_string(),
+                label: Some("Name".to_string()),
+                value: Some("new".to_string()),
+                bounds: None,
+                children: vec![],
+                toggled: None,
+                disabled: true,
+                focused: true,
+            }],
+        };
+        let diff = compute_tree_diff(&tree_a, &tree_b);
+
+        assert_eq!(diff["added_count"], 0);
+        assert_eq!(diff["removed_count"], 0);
+        assert_eq!(diff["modified_count"], 1);
+
+        let changes = &diff["modified"][0]["changes"];
+        assert!(
+            changes
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|c| c["field"] == "value")
+        );
+        assert!(
+            changes
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|c| c["field"] == "disabled")
+        );
+        assert!(
+            changes
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|c| c["field"] == "focused")
+        );
+    }
+
+    #[test]
+    fn test_compute_tree_diff_postconditions() {
+        // セットアップ: 複合的なケース
+        let tree_a = egui_mcp_protocol::UiTree {
+            roots: vec![1, 2],
+            nodes: vec![
+                egui_mcp_protocol::NodeInfo {
+                    id: 1,
+                    role: "Button".to_string(),
+                    label: Some("A".to_string()),
+                    value: None,
+                    bounds: None,
+                    children: vec![],
+                    toggled: None,
+                    disabled: false,
+                    focused: false,
+                },
+                egui_mcp_protocol::NodeInfo {
+                    id: 2,
+                    role: "Label".to_string(),
+                    label: Some("B".to_string()),
+                    value: Some("old".to_string()),
+                    bounds: None,
+                    children: vec![],
+                    toggled: None,
+                    disabled: false,
+                    focused: false,
+                },
+            ],
+        };
+        let tree_b = egui_mcp_protocol::UiTree {
+            roots: vec![2, 3],
+            nodes: vec![
+                egui_mcp_protocol::NodeInfo {
+                    id: 2,
+                    role: "Label".to_string(),
+                    label: Some("B".to_string()),
+                    value: Some("new".to_string()), // modified
+                    bounds: None,
+                    children: vec![],
+                    toggled: None,
+                    disabled: false,
+                    focused: false,
+                },
+                egui_mcp_protocol::NodeInfo {
+                    id: 3,
+                    role: "TextInput".to_string(),
+                    label: Some("C".to_string()),
+                    value: None,
+                    bounds: None,
+                    children: vec![],
+                    toggled: None,
+                    disabled: false,
+                    focused: false,
+                },
+            ],
+        };
+
+        let diff = compute_tree_diff(&tree_a, &tree_b);
+
+        // 事後条件1: added のIDは tree_b にあって tree_a にない
+        let ids_a: std::collections::HashSet<u64> = tree_a.nodes.iter().map(|n| n.id).collect();
+        let ids_b: std::collections::HashSet<u64> = tree_b.nodes.iter().map(|n| n.id).collect();
+
+        for added in diff["added"].as_array().unwrap() {
+            let id = added["id"].as_u64().unwrap();
+            assert!(ids_b.contains(&id), "added id {} should be in tree_b", id);
+            assert!(
+                !ids_a.contains(&id),
+                "added id {} should not be in tree_a",
+                id
+            );
+        }
+
+        // 事後条件2: removed のIDは tree_a にあって tree_b にない
+        for removed in diff["removed"].as_array().unwrap() {
+            let id = removed["id"].as_u64().unwrap();
+            assert!(ids_a.contains(&id), "removed id {} should be in tree_a", id);
+            assert!(
+                !ids_b.contains(&id),
+                "removed id {} should not be in tree_b",
+                id
+            );
+        }
+
+        // 事後条件3: modified のIDは両方に存在する
+        for modified in diff["modified"].as_array().unwrap() {
+            let id = modified["id"].as_u64().unwrap();
+            assert!(
+                ids_a.contains(&id),
+                "modified id {} should be in tree_a",
+                id
+            );
+            assert!(
+                ids_b.contains(&id),
+                "modified id {} should be in tree_b",
+                id
+            );
+        }
+
+        // 事後条件4: カウントと配列長が一致
+        assert_eq!(
+            diff["added_count"].as_u64().unwrap() as usize,
+            diff["added"].as_array().unwrap().len()
+        );
+        assert_eq!(
+            diff["removed_count"].as_u64().unwrap() as usize,
+            diff["removed"].as_array().unwrap().len()
+        );
+        assert_eq!(
+            diff["modified_count"].as_u64().unwrap() as usize,
+            diff["modified"].as_array().unwrap().len()
+        );
     }
 }

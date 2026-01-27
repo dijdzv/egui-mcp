@@ -50,3 +50,76 @@ impl AtspiError {
         Self::InterfaceNotAvailable { interface, id }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_element_not_found_error_message() {
+        let err = AtspiError::element_not_found(42, "my-app");
+        assert_eq!(
+            err.to_string(),
+            "Element with id 42 not found in application 'my-app'"
+        );
+    }
+
+    #[test]
+    fn test_element_not_found_with_string() {
+        let app_name = String::from("test-app");
+        let err = AtspiError::element_not_found(123, app_name);
+        assert!(err.to_string().contains("123"));
+        assert!(err.to_string().contains("test-app"));
+    }
+
+    #[test]
+    fn test_interface_not_available_error_message() {
+        let err = AtspiError::interface_not_available("Text", 99);
+        assert_eq!(
+            err.to_string(),
+            "AT-SPI Text interface not available on element 99"
+        );
+    }
+
+    #[test]
+    fn test_app_not_found_error_message() {
+        let err = AtspiError::AppNotFound {
+            app_name: "missing-app".to_string(),
+        };
+        assert_eq!(
+            err.to_string(),
+            "Application 'missing-app' not found via AT-SPI"
+        );
+    }
+
+    #[test]
+    fn test_error_postconditions() {
+        // 事後条件: ElementNotFound のメッセージには id と app_name が含まれる
+        let err = AtspiError::element_not_found(999, "test-app");
+        let msg = err.to_string();
+        assert!(msg.contains("999"), "Error message should contain id");
+        assert!(
+            msg.contains("test-app"),
+            "Error message should contain app_name"
+        );
+
+        // 事後条件: InterfaceNotAvailable のメッセージには interface と id が含まれる
+        let err = AtspiError::interface_not_available("Selection", 42);
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Selection"),
+            "Error message should contain interface"
+        );
+        assert!(msg.contains("42"), "Error message should contain id");
+
+        // 事後条件: AppNotFound のメッセージには app_name が含まれる
+        let err = AtspiError::AppNotFound {
+            app_name: "my-app".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("my-app"),
+            "Error message should contain app_name"
+        );
+    }
+}
