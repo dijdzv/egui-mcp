@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.4](https://github.com/dijdzv/egui-mcp/compare/0.0.3...0.0.4) - 2026-01-27
+
+### Added
+
+- Add EGUI_MCP_APP_NAME environment variable support ([#18](https://github.com/dijdzv/egui-mcp/pull/18))
+- Add CLI with --help, --version, and guide command ([#22](https://github.com/dijdzv/egui-mcp/pull/22))
+
+### Fixed
+
+- Correct repository URL and require subcommand ([#23](https://github.com/dijdzv/egui-mcp/pull/23))
+
+### Performance
+
+- Implement connection reuse for IPC client ([#28](https://github.com/dijdzv/egui-mcp/pull/28))
+
+### Refactored
+
+- Migrate atspi from async-std to tokio ([#24](https://github.com/dijdzv/egui-mcp/pull/24))
+- Extract modules from main.rs ([#25](https://github.com/dijdzv/egui-mcp/pull/25))
+- Consolidate magic numbers into constants module ([#30](https://github.com/dijdzv/egui-mcp/pull/30))
+
+### Testing
+
+- Expand test coverage with contract-based tests ([#26](https://github.com/dijdzv/egui-mcp/pull/26))
+
+
+
 ## [0.0.3](https://github.com/dijdzv/egui-mcp/compare/egui-mcp-server-v0.0.2...egui-mcp-server-v0.0.3) - 2026-01-26
 
 ### Fixed
