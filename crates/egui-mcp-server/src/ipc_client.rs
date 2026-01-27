@@ -14,10 +14,22 @@ use egui_mcp_protocol::{
 };
 use std::path::PathBuf;
 use tokio::net::UnixStream;
+use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::sync::Mutex;
+
+/// Cached connection to the egui application
+struct CachedConnection {
+    reader: OwnedReadHalf,
+    writer: OwnedWriteHalf,
+}
 
 /// IPC client for communicating with egui applications
+///
+/// This client maintains a cached connection to reduce connection overhead.
+/// If the connection fails, it automatically reconnects on the next request.
 pub struct IpcClient {
     socket_path: PathBuf,
+    connection: Mutex<Option<CachedConnection>>,
 }
 
 impl IpcClient {
@@ -28,16 +40,55 @@ impl IpcClient {
 
     /// Create a new IPC client with a custom socket path
     pub fn with_socket_path(socket_path: PathBuf) -> Self {
-        Self { socket_path }
+        Self {
+            socket_path,
+            connection: Mutex::new(None),
+        }
+    }
+
+    /// Get or create a connection to the egui application
+    async fn get_connection(
+        &self,
+    ) -> Result<tokio::sync::MutexGuard<'_, Option<CachedConnection>>, ProtocolError> {
+        let mut guard = self.connection.lock().await;
+        if guard.is_none() {
+            let stream = UnixStream::connect(&self.socket_path).await?;
+            let (reader, writer) = stream.into_split();
+            *guard = Some(CachedConnection { reader, writer });
+        }
+        Ok(guard)
     }
 
     /// Connect to the egui application and send a request
+    ///
+    /// This method reuses an existing connection if available.
+    /// If the connection fails, it automatically reconnects and retries once.
     async fn send_request(&self, request: &Request) -> Result<Response, ProtocolError> {
-        let stream = UnixStream::connect(&self.socket_path).await?;
-        let (mut reader, mut writer) = stream.into_split();
+        // Try with existing or new connection
+        let result = self.try_send_request(request).await;
 
-        write_request(&mut writer, request).await?;
-        let response = read_response(&mut reader).await?;
+        match result {
+            Ok(response) => Ok(response),
+            Err(_) => {
+                // Connection failed, clear it and try once more with a fresh connection
+                *self.connection.lock().await = None;
+                self.try_send_request(request).await
+            }
+        }
+    }
+
+    /// Try to send a request using the cached connection
+    async fn try_send_request(&self, request: &Request) -> Result<Response, ProtocolError> {
+        let mut guard = self.get_connection().await?;
+        let conn = guard.as_mut().ok_or_else(|| {
+            ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotConnected,
+                "No connection available",
+            ))
+        })?;
+
+        write_request(&mut conn.writer, request).await?;
+        let response = read_response(&mut conn.reader).await?;
 
         Ok(response)
     }
