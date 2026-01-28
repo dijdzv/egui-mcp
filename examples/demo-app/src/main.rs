@@ -53,6 +53,10 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
 
+    // Enter the Tokio runtime context before starting eframe
+    // This ensures AccessKit's AT-SPI registration (via zbus) can find the runtime
+    let _runtime_guard = runtime.enter();
+
     eframe::run_native(
         "egui-mcp Demo App",
         options,
