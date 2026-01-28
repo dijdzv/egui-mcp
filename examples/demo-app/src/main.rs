@@ -22,7 +22,10 @@ fn main() -> eframe::Result<()> {
 
     tracing_subscriber::registry()
         .with(mcp_layer)
-        .with(tracing_subscriber::fmt::layer())
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_filter(tracing_subscriber::filter::LevelFilter::WARN),
+        )
         .init();
 
     // Create tokio runtime for async operations
@@ -49,6 +52,10 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default().with_inner_size([500.0, 600.0]),
         ..Default::default()
     };
+
+    // Enter the Tokio runtime context before starting eframe
+    // This ensures AccessKit's AT-SPI registration (via zbus) can find the runtime
+    let _runtime_guard = runtime.enter();
 
     eframe::run_native(
         "egui-mcp Demo App",

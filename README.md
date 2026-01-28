@@ -129,6 +129,20 @@ The following tools are implemented but not useful for egui:
 
 ## Installation
 
+### From crates.io (Recommended)
+
+```bash
+cargo install egui-mcp-server
+```
+
+### Using cargo-binstall (Faster)
+
+If you have [cargo-binstall](https://github.com/cargo-bins/cargo-binstall) installed, you can download pre-built binaries:
+
+```bash
+cargo binstall egui-mcp-server
+```
+
 ### Build from Source
 
 ```bash

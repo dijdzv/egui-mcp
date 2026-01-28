@@ -51,7 +51,9 @@ pub struct AtspiClient {
 impl AtspiClient {
     /// Create a new AT-SPI client
     pub async fn new() -> Result<Self, BoxError> {
-        let connection = AccessibilityConnection::new().await?;
+        let connection = AccessibilityConnection::new()
+            .await
+            .map_err(|e| format!("Failed to connect to AT-SPI bus: {}", e))?;
         Ok(Self { connection })
     }
 
@@ -77,12 +79,18 @@ impl AtspiClient {
     ) -> Result<Option<ObjectRefOwned>, BoxError> {
         let registry_proxy: AccessibleProxy<'_> =
             AccessibleProxy::builder(self.connection.connection())
-                .destination("org.a11y.atspi.Registry")?
-                .path("/org/a11y/atspi/accessible/root")?
+                .destination("org.a11y.atspi.Registry")
+                .map_err(|e| format!("Failed to set AT-SPI registry destination: {}", e))?
+                .path("/org/a11y/atspi/accessible/root")
+                .map_err(|e| format!("Failed to set AT-SPI registry path: {}", e))?
                 .build()
-                .await?;
+                .await
+                .map_err(|e| format!("Failed to build AT-SPI registry proxy: {}", e))?;
 
-        let apps: Vec<ObjectRefOwned> = registry_proxy.get_children().await?;
+        let apps: Vec<ObjectRefOwned> = registry_proxy
+            .get_children()
+            .await
+            .map_err(|e| format!("Failed to get applications from AT-SPI registry: {}", e))?;
 
         for app_ref in apps {
             let app_proxy: AccessibleProxy<'_> = app_ref
@@ -169,13 +177,19 @@ impl AtspiClient {
 
         use atspi::proxy::action::ActionProxy;
         let action_proxy = ActionProxy::builder(self.connection.connection())
-            .destination(destination.as_str())?
-            .path(path.as_str())?
+            .destination(destination.as_str())
+            .map_err(|e| format!("Failed to set Action proxy destination: {}", e))?
+            .path(path.as_str())
+            .map_err(|e| format!("Failed to set Action proxy path: {}", e))?
             .build()
-            .await?;
+            .await
+            .map_err(|e| format!("Failed to build Action proxy for element {}: {}", id, e))?;
 
         // Action index 0 is typically the default action (click for buttons)
-        let result = action_proxy.do_action(0).await?;
+        let result = action_proxy
+            .do_action(0)
+            .await
+            .map_err(|e| format!("Failed to perform click action on element {}: {}", id, e))?;
         Ok(result)
     }
 
@@ -188,12 +202,23 @@ impl AtspiClient {
 
         use atspi::proxy::editable_text::EditableTextProxy;
         let editable_text_proxy = EditableTextProxy::builder(self.connection.connection())
-            .destination(destination.as_str())?
-            .path(path.as_str())?
+            .destination(destination.as_str())
+            .map_err(|e| format!("Failed to set EditableText proxy destination: {}", e))?
+            .path(path.as_str())
+            .map_err(|e| format!("Failed to set EditableText proxy path: {}", e))?
             .build()
-            .await?;
+            .await
+            .map_err(|e| {
+                format!(
+                    "Failed to build EditableText proxy for element {}: {}",
+                    id, e
+                )
+            })?;
 
-        let result = editable_text_proxy.set_text_contents(text).await?;
+        let result = editable_text_proxy
+            .set_text_contents(text)
+            .await
+            .map_err(|e| format!("Failed to set text on element {}: {}", id, e))?;
         Ok(result)
     }
 
