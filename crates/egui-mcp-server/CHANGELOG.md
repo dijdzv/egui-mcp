@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.5](https://github.com/dijdzv/egui-mcp/compare/0.0.4...0.0.5) - 2026-01-28
+
+### Refactored
+
+- Split main.rs into modular tools directory ([#33](https://github.com/dijdzv/egui-mcp/pull/33))
+
+
+
 ## [0.0.4](https://github.com/dijdzv/egui-mcp/compare/0.0.3...0.0.4) - 2026-01-27
 
 ### Added
