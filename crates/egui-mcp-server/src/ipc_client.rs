@@ -241,6 +241,7 @@ impl IpcClient {
 
     /// Take a screenshot of a specific region of the egui application
     /// Returns (base64_data, format)
+    #[allow(dead_code)]
     pub async fn take_screenshot_region(
         &self,
         x: f32,

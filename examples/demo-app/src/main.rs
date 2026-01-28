@@ -22,7 +22,10 @@ fn main() -> eframe::Result<()> {
 
     tracing_subscriber::registry()
         .with(mcp_layer)
-        .with(tracing_subscriber::fmt::layer())
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_filter(tracing_subscriber::filter::LevelFilter::WARN),
+        )
         .init();
 
     // Create tokio runtime for async operations
