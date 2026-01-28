@@ -1219,7 +1219,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "uiautomation",
 ]
 
 [[package]]
@@ -3787,29 +3786,6 @@ dependencies = [
  "memoffset",
  "tempfile",
  "winapi",
-]
-
-[[package]]
-name = "uiautomation"
-version = "0.21.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5c6db49f456471eccacfe0143a3d628143abc348d4de2cf42fcc67e52dd3ad4"
-dependencies = [
- "chrono",
- "uiautomation_derive",
- "windows",
- "windows-core 0.61.2",
-]
-
-[[package]]
-name = "uiautomation_derive"
-version = "0.7.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5032a066f246dc21dbff63f9423cd97ab7ffa89125bdbaa6443b07e97394883e"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]

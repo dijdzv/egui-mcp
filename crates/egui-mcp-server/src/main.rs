@@ -16,8 +16,6 @@ mod utils;
 mod atspi_client;
 #[cfg(target_os = "linux")]
 mod errors;
-#[cfg(target_os = "windows")]
-mod uia_client;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
